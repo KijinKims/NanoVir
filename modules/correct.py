@@ -5,7 +5,7 @@ from Bio.SeqRecord import SeqRecord
 from hmm_profile import reader
 import pydot
 import networkx as nx
-import modules.profileHMM as profileHMM
+import profileHMM
 
 def read_contigs(contigs_path_):
     return SeqIO.parse(contigs_path_, "fasta")

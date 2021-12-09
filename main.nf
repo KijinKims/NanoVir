@@ -3,12 +3,12 @@ nextflow.enable.dsl=2
 workflow {
     main:
     Channel.fromPath(params.input).set { fastq }
-    //Canu(fastq)
-    //Translate(Canu.out.contigs)
-    //HMMscan(Translate.out.translated_contigs)
-    //Correct(Canu.out.contigs, Canu.out.graph, HMMscan.out.domtbl)
-    //Virsorter2(Correct.out.corrected_contigs)
-    //CheckV(Virsorter2.out.viral_contigs)
+    Canu(fastq)
+    Translate(Canu.out.contigs)
+    HMMscan(Translate.out.translated_contigs)
+    Correct(Canu.out.contigs, Canu.out.graph, HMMscan.out.domtbl)
+    Virsorter2(Correct.out.corrected_contigs)
+    CheckV(Virsorter2.out.viral_contigs)
 }
 
 process Canu {
@@ -21,7 +21,7 @@ process Canu {
         path "canu.${params.prefix}/${params.prefix}.contigs.fasta", emit: contigs
         path "canu.${params.prefix}/${params.prefix}.graph.dot", emit: graph
     """
-    ${params.canu_binary_path} $fastq -d canu.${params.prefix} -p ${params.prefix} ${params.canu_high_sens_opts}
+    ${params.canu_binary_path} -p ${params.prefix} -d canu.${params.prefix} -nanopore-raw $fastq ${params.canu_high_sens_opts}
     """
 
 }
@@ -32,7 +32,7 @@ process Translate {
     output:
         path "${params.prefix}.pep.fasta", emit: translated_contigs
     """
-    python modules/dna2pep.py --input $contigs --output ${params.prefix}.pep.fasta
+    python ${params.nanovir_dir}/modules/dna2pep.py -i $contigs -o ${params.prefix}.pep.fasta
     """
 }
 
@@ -42,9 +42,10 @@ process HMMscan {
     input:
         path translated_contigs
     output:
-        path "hmmscan.${params.prefix}/${params.prefix}_${params.hmmdb}.domtbl", emit: domtbl
+        path "hmmscan.${params.prefix}/${params.prefix}.domtbl", emit: domtbl
     """
-    hmmscan -domtblout hmmscan.${params.prefix}/${params.prefix}_${params.hmmdb}.domtbl -E ${params.hmmscan_evalue} ${params.hmmdb} $translated_contigs 
+    mkdir hmmscan.${params.prefix}
+    hmmscan --domtblout hmmscan.${params.prefix}/${params.prefix}.domtbl -E ${params.hmmscan_evalue} ${params.hmmdb} $translated_contigs 
     """
 }
 
@@ -58,7 +59,7 @@ process Correct {
     output:
         path "correct.${params.prefix}/${params.prefix}.corrected_contigs.fasta", emit: corrected_contigs
     """
-    python modules/correct.py --contigs $contigs --DAG $graphs --hmmscan_result $hmmscan_result --minimum_edge_weight ${params.min_weight} -o correct.${params.prefix}/${params.prefix}.corrected_contigs.fasta
+    python ${params.nanovir_dir}/modules/correct.py --contigs $contigs --DAG $graphs --hmmscan_result $hmmscan_result --minimum_edge_weight ${params.min_weight} -o correct.${params.prefix}/${params.prefix}.corrected_contigs.fasta
     """
 }
 
@@ -75,7 +76,7 @@ process Virsorter2 {
     """
 }
 
-process Checkv {
+process CheckV {
     publishDir "${params.outdir}", mode: 'copy'
 
     input:
