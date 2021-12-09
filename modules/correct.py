@@ -5,7 +5,7 @@ from Bio.SeqRecord import SeqRecord
 from hmm_profile import reader
 import pydot
 import networkx as nx
-import profileHMM
+import modules.profileHMM as profileHMM
 
 def read_contigs(contigs_path_):
     return SeqIO.parse(contigs_path_, "fasta")
@@ -26,7 +26,7 @@ def read_dot(dot_path_):
     
     return graphs
 
-def prun_dot(DAGS_):
+def prun_DAG(DAGS_):
     pass
 
 def parse_hmmscanresult(hmmscan_domtbl_path_):
@@ -179,7 +179,7 @@ if __name__ == '__main__':
 
     contigs         = read_contigs(contigs_path) # list of SeqRecord obj
     DAGs            = read_dot(dot_path) # list of networkx obj
-    pruned_DAGs     = prun_dot(DAGs, minimum_edge_weight) # prun the edges whose weights are smaller than threshold
+    pruned_DAGs     = prun_DAG(DAGs, minimum_edge_weight) # prun the edges whose weights are smaller than threshold
     contig_DAG      = pair_contig_DAG(contigs, pruned_DAGs) # dictionary 
                                                      # key: contig ID
                                                      # value: (contig's SeqRecord obj, networkx obj of its DAG)

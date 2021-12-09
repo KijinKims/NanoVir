@@ -1,0 +1,13 @@
+name: NanoVir
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::nextflow
+  - bioconda::biopython
+  - bioconda::hmmer
+  - bioconda::virsorter
+  - bioconda::checkv
+  - conda-forge::pydot
+  - conda-forge::networkx
+  - conda-forge::numpy

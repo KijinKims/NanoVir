@@ -3,12 +3,12 @@ nextflow.enable.dsl=2
 workflow {
     main:
     Channel.fromPath(params.input).set { fastq }
-    Canu(fastq)
-    Translate(Canu.out.contigs)
-    HMMscan(Translate.out.translated_contigs)
-    Correct(Canu.out.contigs, Canu.out.graph, HMMscan.out.domtbl)
-    Virsorter2(Correct.out.corrected_contigs)
-    CheckV(Virsorter2.out.viral_contigs)
+    //Canu(fastq)
+    //Translate(Canu.out.contigs)
+    //HMMscan(Translate.out.translated_contigs)
+    //Correct(Canu.out.contigs, Canu.out.graph, HMMscan.out.domtbl)
+    //Virsorter2(Correct.out.corrected_contigs)
+    //CheckV(Virsorter2.out.viral_contigs)
 }
 
 process Canu {
@@ -32,7 +32,7 @@ process Translate {
     output:
         path "${params.prefix}.pep.fasta", emit: translated_contigs
     """
-    python lab_scripts/dna2pep.py -r all --fasta ${params.prefix}.pep.fasta $contigs
+    python modules/dna2pep.py --input $contigs --output ${params.prefix}.pep.fasta
     """
 }
 
@@ -58,7 +58,7 @@ process Correct {
     output:
         path "correct.${params.prefix}/${params.prefix}.corrected_contigs.fasta", emit: corrected_contigs
     """
-    python correct.py --contigs $contigs --DAG $graphs --hmmscan_result $hmmscan_result --minimum_edge_weight ${params.min_weight} -o correct.${params.prefix}/${params.prefix}.corrected_contigs.fasta
+    python modules/correct.py --contigs $contigs --DAG $graphs --hmmscan_result $hmmscan_result --minimum_edge_weight ${params.min_weight} -o correct.${params.prefix}/${params.prefix}.corrected_contigs.fasta
     """
 }
 
