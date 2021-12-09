@@ -4,21 +4,24 @@ workflow {
     main:
     Channel.fromPath(params.input).set { fastq }
     Canu(fastq)
-    Translate(Canu.out())
-    HMMscan(Translate.out())
-    Correct(HMMscan.out())
-    Virsorter2(Correct.out())
-    CheckV(Virsorter2.out())
+    Translate(Canu.out.contigs)
+    HMMscan(Translate.out.translated_contigs)
+    Correct(Canu.out.contigs, Canu.out.graph, HMMscan.out.domtbl)
+    Virsorter2(Correct.out.corrected_contigs)
+    CheckV(Virsorter2.out.viral_contigs)
 }
 
 process Canu {
+    publishDir "${params.outdir}", mode: 'copy'
+
     input:
         path fastq
     output:
-        path "canu/${params.prefix}.contigs.fasta"
-        path graphs
+        path "canu.${params.prefix}/*"
+        path "canu.${params.prefix}/${params.prefix}.contigs.fasta", emit: contigs
+        path "canu.${params.prefix}/${params.prefix}.graph.dot", emit: graph
     """
-    canu $fastq -d canu -p ${params.prefix} ${params.canu_high_sens_opts}
+    ${params.canu_binary_path} $fastq -d canu.${params.prefix} -p ${params.prefix} ${params.canu_high_sens_opts}
     """
 
 }
@@ -26,58 +29,60 @@ process Canu {
 process Translate {
     input:
         path contigs
-        path graphs
     output:
-        path contigs
-        path "${contigs.baseName}.pep.fasta"
-        path graphs
+        path "${params.prefix}.pep.fasta", emit: translated_contigs
     """
-    python lab_scripts/dna2pep.py -r all --fasta ${contigs.baseName}.pep.fasta $contigs
+    python lab_scripts/dna2pep.py -r all --fasta ${params.prefix}.pep.fasta $contigs
     """
 }
 
 process HMMscan {
+    publishDir "${params.outdir}", mode: 'copy'
+
     input:
-        path contigs
         path translated_contigs
-        path graphs
     output:
-        path contigs
-        path graphs
-        path "${params.prefix}_${params.hmmdb}.domtbl"
+        path "hmmscan.${params.prefix}/${params.prefix}_${params.hmmdb}.domtbl", emit: domtbl
     """
-    hmmscan $translated_contigs $graphs ${params.hmmdb} --domtbl ${params.prefix}_${params.hmmdb}.domtbl
+    hmmscan -domtblout hmmscan.${params.prefix}/${params.prefix}_${params.hmmdb}.domtbl -E ${params.hmmscan_evalue} ${params.hmmdb} $translated_contigs 
     """
 }
 
 process Correct {
+    publishDir "${params.outdir}", mode: 'copy'
+
     input:
         path contigs
         path graphs
         path hmmscan_result    
     output:
-        path corrected_contigs
+        path "correct.${params.prefix}/${params.prefix}.corrected_contigs.fasta", emit: corrected_contigs
     """
-    python correct.py --contigs $contigs --DAG $graphs --hmmscan_result $hmmscan_result --DAG_coef ${params.DAG_coef} --HMM_coef ${params.HMM_coef}
+    python correct.py --contigs $contigs --DAG $graphs --hmmscan_result $hmmscan_result --minimum_edge_weight ${params.min_weight} -o correct.${params.prefix}/${params.prefix}.corrected_contigs.fasta
     """
 }
 
 process Virsorter2 {
+    publishDir "${params.outdir}", mode: 'copy'
+
     input:
         path contigs
     output:
-        path viral_contigs
+        path "virsorter.${params.prefix}/*"
+        path "virsorter.${params.prefix}/final-viral-combined.fa", emit: viral_contigs
     """
-    virsorter run -d ${params.virsorterdb} -i $viral_contigs -j ${params.threads} all
+    virsorter run -d ${params.virsorterdb} -i $viral_contigs -j ${params.threads} ${params.virsorter_viruses} -w virsorter.${params.prefix}
     """
 }
 
 process Checkv {
+    publishDir "${params.outdir}", mode: 'copy'
+
     input:
         path viral_contigs
     output:
-        path result
+        path "checkv.${params.prefix}/*"
     """
-    checkv end_to_end -d ${params.checkvdb} $viral_contigs -t ${params.threads}
+    checkv ${params.checkv_mode} -d ${params.checkvdb} $viral_contigs checkv.${params.prefix} -t ${params.threads}
     """
 }

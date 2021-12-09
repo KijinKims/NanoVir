@@ -5,7 +5,7 @@ from Bio.SeqRecord import SeqRecord
 from hmm_profile import reader
 import pydot
 import networkx as nx
-import ProfileHMM
+import profileHMM
 
 def read_contigs(contigs_path_):
     return SeqIO.parse(contigs_path_, "fasta")
@@ -25,6 +25,9 @@ def read_dot(dot_path_):
     graphs = map(nx.nx_pydot.from_pydot, graphs)
     
     return graphs
+
+def prun_dot(DAGS_):
+    pass
 
 def parse_hmmscanresult(hmmscan_domtbl_path_):
     domtbl = SearchIO.parse(hmmscan_domtbl_path_, "hmmscan3-domtab")
@@ -116,7 +119,7 @@ def complement(DAG_):
 
 def correct_contig(DAG_, phmm_):
     locate_grand_parents(DAG_)
-    PHMM = ProfileHMM.HMM(phmm_)
+    PHMM = profileHMM.HMM(phmm_)
     return PHMM.modified_viterbi(DAG_)
     
 
@@ -167,6 +170,7 @@ if __name__ == '__main__':
     hmmscan_domtbl_path = "hmmscan.domtbl"
     output_path         = "corrected_contigs.fasta"
     output_dot          = "output.dot"
+    minimum_edge_weight = 1
     
     phmms           = read_phmmDB(phmmDB_path) # dictionary
                                                # key: HMM name
@@ -175,7 +179,8 @@ if __name__ == '__main__':
 
     contigs         = read_contigs(contigs_path) # list of SeqRecord obj
     DAGs            = read_dot(dot_path) # list of networkx obj
-    contig_DAG      = pair_contig_DAG(contigs, DAGs) # dictionary 
+    pruned_DAGs     = prun_dot(DAGs, minimum_edge_weight) # prun the edges whose weights are smaller than threshold
+    contig_DAG      = pair_contig_DAG(contigs, pruned_DAGs) # dictionary 
                                                      # key: contig ID
                                                      # value: (contig's SeqRecord obj, networkx obj of its DAG)
     with open(output_path, "w") as output_handle:
