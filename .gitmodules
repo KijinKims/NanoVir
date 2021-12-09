@@ -1,0 +1,3 @@
+[submodule "lab_scripts"]
+	path = lab_scripts
+	url = https://github.com/KijinKims/lab_scripts.git
