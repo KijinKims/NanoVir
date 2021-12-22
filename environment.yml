@@ -9,5 +9,5 @@ dependencies:
   - bioconda::virsorter
   - bioconda::checkv
   - conda-forge::pydot
-  - conda-forge::networkx
+  - conda-forge::networkx==2.6.3
   - conda-forge::numpy

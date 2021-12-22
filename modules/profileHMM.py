@@ -1,123 +1,103 @@
-# external Libraries
 try:
     import numpy as np
     import networkx as nx
+    from hmm_profile import reader
+    from hmm_profile.models import HMM
 except ImportError:
-    print('[Error] Seems you do not have numpy, numba, networkx. Too bad - Exiting...')
+    print('[Error] Seems you do not have the required python packages. Please check it.')
 
 # python modules
 from math import log
-from hmm_profile import reader
+from typing import List, Dict, Tuple, Any
+from collections.abc import Mapping
+from typing import NewType
 
-# Standard genetic code:
-codon_dict = {}
-# nTn
-codon_dict["TTT"] = codon_dict["TTC"] = "F"
-codon_dict["TTA"] = codon_dict["TTG"] = codon_dict["CTT"] = codon_dict["CTC"] = codon_dict["CTA"] = codon_dict["CTG"] = "L"
-codon_dict["ATT"] = codon_dict["ATC"] = codon_dict["ATA"] = "I"
-codon_dict["ATG"] = "M"
-codon_dict["GTT"] = codon_dict["GTC"] = codon_dict["GTA"] = codon_dict["GTG"] = "V"
+# NanoVir modules
+from codon_table import codon_read_only
+from correct import DAG
 
-# nCn
-codon_dict["TCT"] = codon_dict["TCC"] = codon_dict["TCA"] = codon_dict["TCG"] = "S"
-codon_dict["CCT"] = codon_dict["CCC"] = codon_dict["CCA"] = codon_dict["CCG"] = "P"
-codon_dict["ACT"] = codon_dict["ACC"] = codon_dict["ACA"] = codon_dict["ACG"] = "T"
-codon_dict["GCT"] = codon_dict["GCC"] = codon_dict["GCA"] = codon_dict["GCG"] = "A"
+NodeId = NewType('NodeId', str)
+ProteinCode = NewType('ProteinCode', str)
+Idx = NewType('Idx', int)
+Base = NewType('Base', str)
 
-# nAn
-codon_dict["TAT"] = codon_dict["TAC"] = "Y"
-codon_dict["TAA"] = codon_dict["TAG"] = "*" 	#Stop
-codon_dict["CAT"] = codon_dict["CAC"] = "H"
-codon_dict["CAA"] = codon_dict["CAG"] = "Q"
-codon_dict["AAT"] = codon_dict["AAC"] = "N"
-codon_dict["AAA"] = codon_dict["AAG"] = "K"
-codon_dict["GAT"] = codon_dict["GAC"] = "D"
-codon_dict["GAA"] = codon_dict["GAG"] = "E"
-
-# nGn
-codon_dict["TGT"] = codon_dict["TGC"] = "C"
-codon_dict["TGA"] = "*"  			#Stop
-codon_dict["TGG"] = "W"
-codon_dict["CGT"] = codon_dict["CGC"] = codon_dict["CGA"] = codon_dict["CGG"] = "R"
-codon_dict["AGT"] = codon_dict["AGC"] = "S"
-codon_dict["AGA"] = codon_dict["AGG"] = "R"
-codon_dict["GGT"] = codon_dict["GGC"] = codon_dict["GGA"] = codon_dict["GGG"] = "G"
-
-class HMM:
-    """docstring for HMM"""
-    def __init__(self, phmm_):
+class PHMM:
+    """docstring for PHMM"""
+    def __init__(self, phmm_ : HMM):
 
         # Getting the length
-        self.phmm = phmm_
-        self.alphabet = self.phmm.metadata.alphabet
-        self.alphabet_dict = {value: index for index, value in enumerate(self.alphabet)}
-        self.n = self.phmm.metadata.length
+        self._phmm : HMM = phmm_
+        self._alphabet : List[ProteinCode] = [ProteinCode(x) for x in self._phmm.metadata.alphabet]
+        self._alphabet_to_index : Dict[ProteinCode, Idx] = {value: Idx(index) for index, value in enumerate(self._alphabet)}
+        self._len : int = self._phmm.metadata.length
 
         # Transferting the probabilities
-        self.transmissions = self.transfer_transmissions()
-        self.emissions_from_M, self.emissions_from_I = self.transfer_emissons()
+        self._transmissions : np.ndarray = self.transfer_transmissions()
+        self._emissions_from_M : np.ndarray
+        self._emissions_from_I : np.ndarray
+        self._emissions_from_M, self._emissions_from_I = self.transfer_emissons()
 
-    def modified_viterbi(self, DAG_):
+    def __len__(self) -> int:
+        return self._len
 
-        ordering = list(nx.algorithms.dag.topological_sort(DAG_))
-        node_id_to_sorted_order_dict = { val : idx for idx, val in enumerate(ordering) }
+    def modified_viterbi(self, DAG_ : DAG) -> Tuple[DAG, List[NodeId]]:
 
-        predecessors = [[]] * len(ordering) # list of list
-        for i in range(len(ordering)):
-            predecessors[i] = [ node_id_to_sorted_order_dict[predecessor_id] for predecessor_id in DAG_.predecessors(ordering[i]) ]
+        ordering = DAG_.ordering
 
-        ancestors = [[]] * len(ordering) # list of list of list
-        for i in range(len(ordering)):
-            if 'ancestors' in DAG_.nodes[ordering[i]]:
-                for ancestor_set in DAG_.nodes[ordering[i]]['ancestors']:
-                    sorted_order_converted = [ node_id_to_sorted_order_dict[ancestor_id] for ancestor_id in ancestor_set ]
-                    
-                    if not ancestors[i]:
-                        ancestors[i] = [ sorted_order_converted ]
-                    else:
-                        ancestors[i].append(sorted_order_converted)
+        node_id_to_index : Dict[NodeId, Idx] = { NodeId(val) : Idx(idx) for idx, val in enumerate(ordering) }
 
-        bases = [''] * len(ordering)
-        for i in range(len(ordering)):
-            bases[i] = DAG_.nodes[ordering[i]]['base']
+        predecessors : List[List[Idx]] = [[]] * len(DAG_)
+        for i in range(len(DAG_)):
+            index_to_node_id = ordering[i]
+            predecessors[i] = [ node_id_to_index[predecessor_id] for predecessor_id in DAG_.predecessors(index_to_node_id) ]
+
+        ancestors : List[List[List[Idx]]] = [[]]* len(DAG_)
+        for i in range(len(DAG_)):
+            index_to_node_id = ordering[i]
+            for ancestor_list in DAG_.ancestors(index_to_node_id):
+                index_converted_ancestor_list : List[Idx] = [ node_id_to_index[ancestor_id] for ancestor_id in ancestor_list ]
+
+                if not ancestors[i]:
+                    ancestors[i] = [ index_converted_ancestor_list ]
+                else:
+                    ancestors[i].append(index_converted_ancestor_list)
+
+        bases : List[Base]= [''] * len(DAG_)
+        for i in range(len(DAG_)):
+            index_to_node_id = ordering[i]
+            bases[i] = Base(DAG_.base(ordering[i]))
 
         tr, max_tr_idx = self._modified_viterbi(
             predecessors,
             ancestors,
             bases,
-            self.emissions_from_M,
-            self.emissions_from_I,
-            self.transmissions,
-            codon_dict,
-            self.alphabet_dict,
-            len(ordering),
-            self.n
+            self._emissions_from_M,
+            self._emissions_from_I,
+            self._transmissions,
+            codon_read_only,
+            self._alphabet_to_index,
+            len(DAG_),
+            len(self)
         )
 
         corrected_path = [ ordering[x] for x in self.traceback(tr, max_tr_idx) ] # list of node id
-        attrs = {}
-        for node_id in corrected_path:
-            attrs[node_id] = { "corrected_consensus": 'true' }
-        for node_id in DAG_.nodes():
-            if node_id not in attrs:
-                attrs[node_id] = { "corrected_consensus": 'false' }
-        nx.set_node_attributes(DAG_, attrs)
+
         return DAG_, corrected_path
 
-    def _modified_viterbi(self, predecessors, ancestors, bases, e_M, e_I, a, codon_dict, alphabet_dict, N, L):
+    def _modified_viterbi(self, predecessors : List[List[Idx]], ancestors : List[List[List[Idx]]], bases : List[Base], e_M : np.ndarray, e_I : np.ndarray, a : np.ndarray, codon_dict : Mapping, alphabet_to_index : Dict[ProteinCode, Idx], N : int, L : int):
 
-        V_M = np.matrix(np.ones((N, L)) * -np.inf)
-        V_I = np.matrix(np.ones((N, L)) * -np.inf)
-        V_D = np.matrix(np.ones((N, L)) * -np.inf)
-        V_N = np.ones(N) * -np.inf
-        V_C = np.ones(N) * -np.inf
+        V_M : np.ndarray = np.array(np.ones((N, L)) * -np.inf)
+        V_I : np.ndarray = np.array(np.ones((N, L)) * -np.inf)
+        V_D : np.ndarray = np.array(np.ones((N, L)) * -np.inf)
+        V_N : np.ndarray = np.ones(N) * -np.inf
+        V_C : np.ndarray = np.ones(N) * -np.inf
 
-        V_M_tr = np.matrix(np.zeros((N, L)), dtype='i,i,i,i,i')   # first: type of alignment 0 - M, 1 - I, 2 - D, 3 - N, 4 - C
-        V_I_tr = np.matrix(np.zeros((N, L)), dtype='i,i,i,i,i')   # second: DAG node index
-        V_D_tr = np.matrix(np.zeros((N, L)), dtype='i,i,i')       # third: hmm residue index
-        V_N_tr = np.zeros(N, dtype='i,i,i')                         # fourth: parent node ordering index
-        V_C_tr = np.zeros(N, dtype='i,i,i')                         # fifth: grandparent node ordering index
-        tr = [V_M_tr, V_I_tr, V_D_tr, V_N_tr, V_C_tr]
+        V_M_tr : np.ndarray = np.array(np.zeros((N, L)), dtype='i,i,i,i,i')   # first: type of alignment 0 - M, 1 - I, 2 - D, 3 - N, 4 - C
+        V_I_tr : np.ndarray = np.array(np.zeros((N, L)), dtype='i,i,i,i,i')   # second: DAG node index
+        V_D_tr : np.ndarray = np.array(np.zeros((N, L)), dtype='i,i,i')       # third: hmm residue index
+        V_N_tr : np.ndarray = np.zeros(N, dtype='i,i,i')                         # fourth: parent node ordering index
+        V_C_tr : np.ndarray = np.zeros(N, dtype='i,i,i')                         # fifth: grandparent node ordering index
+        tr : List[np.ndarray] = [V_M_tr, V_I_tr, V_D_tr, V_N_tr, V_C_tr]
 
         V_N[0] = 0
 
@@ -141,16 +121,15 @@ class HMM:
                     V_C[i] = c_to_c
                     tr[4][i] = (4,p,0)
 
-            if i == N-1:
-                break
+            if i == N-1 or bases[i] =='^' or bases[i] == '$':
+                continue
 
             if ancestors[i]:
 
-                for ancestor_set in ancestors[i]:
-                    gg = ancestor_set[2] # x_i^(3) grandgrandparent
-                    g = ancestor_set[1] # x_i^(2) grandparent
-                    p = ancestor_set[0] # x_i^(1) parent
-
+                for ancestor_list in ancestors[i]:
+                    gg = ancestor_list[2] # x_i^(3) grandgrandparent
+                    g = ancestor_list[1] # x_i^(2) grandparent
+                    p = ancestor_list[0] # x_i^(1) parent
                     assert gg < i
                     assert g < i
                     assert p < i
@@ -162,7 +141,7 @@ class HMM:
                     if T == '*':
                         continue
 
-                    x = alphabet_dict[T]
+                    x = alphabet_to_index[T]
 
                     for j in range(L): # HMM residue index
 
@@ -245,39 +224,39 @@ class HMM:
         node_index_list.reverse()
         return node_index_list
 
-    def transfer_emissons(self):
-        emissions_from_M = {char: np.zeros(self.n+1) for char in self.alphabet}
-        emissions_from_I = {char: np.zeros(self.n+1) for char in self.alphabet}
+    def transfer_emissons(self) -> np.ndarray:
+        emissions_from_M : Dict[ProteinCode, np.ndarray] = {ProteinCode(char): np.zeros(len(self)+1) for char in self._alphabet}
+        emissions_from_I : Dict[ProteinCode, np.ndarray] = {ProteinCode(char): np.zeros(len(self)+1) for char in self._alphabet}
 
-        for alphabet in self.alphabet:
-            emissions_from_M[alphabet][0] = self.phmm.start_step.p_emission_char[alphabet]
-            emissions_from_I[alphabet][0] = self.phmm.start_step.p_insertion_char[alphabet]
+        for i, alphabet in enumerate(self._alphabet):
+            emissions_from_M[alphabet][0] = self._phmm.start_step.p_emission_char[i]
+            emissions_from_I[alphabet][0] = self._phmm.start_step.p_insertion_char[i]
 
-        for alphabet in self.alphabet:
-            for i in range(1, self.n+1):
-                emissions_from_M[alphabet][i] = self.phmm.steps[i-1].p_emission_char[alphabet]
-                emissions_from_I[alphabet][i] = self.phmm.steps[i-1].p_insertion_char[alphabet]
+        for i, alphabet in enumerate(self._alphabet):
+            for j in range(1, len(self)+1):
+                emissions_from_M[alphabet][j] = self._phmm.steps[j-1].p_emission_char[i]
+                emissions_from_I[alphabet][j] = self._phmm.steps[j-1].p_insertion_char[i]
 
         # return 2D arrays for performance
         return \
-            np.vstack([emissions_from_M[c] for c in self.alphabet]), \
-            np.vstack([emissions_from_I[c] for c in self.alphabet])
+            np.vstack([emissions_from_M[c] for c in self._alphabet]), \
+            np.vstack([emissions_from_I[c] for c in self._alphabet])
     
-    def transfer_transmissions(self):
+    def transfer_transmissions(self) -> np.ndarray:
         # these are all the transmissions we want to observe
         transmission_list = [
             'm->m', 'm->i', 'm->d', 'i->m', 'i->i', 'd->m', 'd->d'
             ]
-        transmissions = {t: np.zeros(self.n+1) for t in transmission_list}
+        transmissions : Dict[str, np.ndarray]= {t: np.zeros(len(self)+1) for t in transmission_list}
 
-        for i in range(1, self.n+1):
-            transmissions['m->m'][i] = self.phmm.steps[i-1].p_emission_to_emission
-            transmissions['m->i'][i] = self.phmm.steps[i-1].p_emission_to_insertion
-            transmissions['m->d'][i] = self.phmm.steps[i-1].p_emission_to_deletion
-            transmissions['i->m'][i] = self.phmm.steps[i-1].p_insertion_to_emission
-            transmissions['i->i'][i] = self.phmm.steps[i-1].p_insertion_to_insertion
-            transmissions['d->m'][i] = self.phmm.steps[i-1].p_deletion_to_emission
-            transmissions['d->d'][i] = self.phmm.steps[i-1].p_deletion_to_deletion
+        for i in range(1, len(self)+1):
+            transmissions['m->m'][i] = self._phmm.steps[i-1].p_emission_to_emission
+            transmissions['m->i'][i] = self._phmm.steps[i-1].p_emission_to_insertion
+            transmissions['m->d'][i] = self._phmm.steps[i-1].p_emission_to_deletion
+            transmissions['i->m'][i] = self._phmm.steps[i-1].p_insertion_to_emission
+            transmissions['i->i'][i] = self._phmm.steps[i-1].p_insertion_to_insertion
+            transmissions['d->m'][i] = self._phmm.steps[i-1].p_deletion_to_emission
+            transmissions['d->d'][i] = self._phmm.steps[i-1].p_deletion_to_deletion
 
         # return everything as a 2D array for performance
         return np.vstack([transmissions[t] for t in transmission_list])
@@ -325,5 +304,5 @@ if __name__ == "__main__":
     f.close()
     phmm = phmms[0]
 
-    hmm = HMM(phmm)
+    hmm = PHMM(phmm)
     print(hmm.modified_viterbi(G))
