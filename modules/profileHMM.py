@@ -14,17 +14,27 @@ from typing import NewType
 
 # NanoVir modules
 from codon_table import codon_read_only
-from correct import DAG
+from correct import DAG, Idx, NodeId, Base
 
-NodeId = NewType('NodeId', str)
 ProteinCode = NewType('ProteinCode', str)
-Idx = NewType('Idx', int)
-Base = NewType('Base', str)
 
 class PHMM:
-    """docstring for PHMM"""
-    def __init__(self, phmm_ : HMM):
+    """The class encapsulating HMM_profile HMM object.
 
+    The overall structure of this class is adapted from https://github.com/janmax/Profile-HMM.
+
+    Attributes:
+        _phmm: A HMM_profile HMM object.
+        _alphabet: A list of alphabets used in HMM. In this module, protein code.
+        _alphabet_to_index: A list of index coverted from each protein code.
+        _len: An integer count of the residues in HMM.
+        _transmissions: A numpy array containing the transmission probabilities from each residue to residue.
+        _emissions_from_M: A numpy array containing the match state emission probabilities at each residue.
+        _emissions_from_I: A numpy array containing the insertion state emission probabilities at each residue.
+    """
+
+    def __init__(self, phmm_ : HMM):
+        """Inits PHMM with a given HMM_profile HMM object."""
         # Getting the length
         self._phmm : HMM = phmm_
         self._alphabet : List[ProteinCode] = [ProteinCode(x) for x in self._phmm.metadata.alphabet]
@@ -38,34 +48,30 @@ class PHMM:
         self._emissions_from_M, self._emissions_from_I = self.transfer_emissons()
 
     def __len__(self) -> int:
+        """Return the number of residues in the HMM."""
         return self._len
 
-    def modified_viterbi(self, DAG_ : DAG) -> Tuple[DAG, List[NodeId]]:
+    def modified_viterbi(self, dag_ : DAG) -> List[NodeId]:
+        """Return the path corrected with viterbi algorithm.
+           Generate data objects to store predecessors, ancestors and base of each node where every node id is converted into index in ordering for numpy operation.    
+        """
+        predecessors : List[List[Idx]] = [[]] * len(dag_)
+        for i in range(len(dag_)):
+            predecessors[i] = [ dag_.node_id_to_index(predecessor_id) for predecessor_id in dag_.predecessors(dag_.index_to_node_id(i)) ]
 
-        ordering = DAG_.ordering
-
-        node_id_to_index : Dict[NodeId, Idx] = { NodeId(val) : Idx(idx) for idx, val in enumerate(ordering) }
-
-        predecessors : List[List[Idx]] = [[]] * len(DAG_)
-        for i in range(len(DAG_)):
-            index_to_node_id = ordering[i]
-            predecessors[i] = [ node_id_to_index[predecessor_id] for predecessor_id in DAG_.predecessors(index_to_node_id) ]
-
-        ancestors : List[List[List[Idx]]] = [[]]* len(DAG_)
-        for i in range(len(DAG_)):
-            index_to_node_id = ordering[i]
-            for ancestor_list in DAG_.ancestors(index_to_node_id):
-                index_converted_ancestor_list : List[Idx] = [ node_id_to_index[ancestor_id] for ancestor_id in ancestor_list ]
+        ancestors : List[List[List[Idx]]] = [[]]* len(dag_)
+        for i in range(len(dag_)):
+            for ancestor_list in dag_.ancestors(dag_.index_to_node_id(i)):
+                index_converted_ancestor_list : List[Idx] = [ dag_.node_id_to_index(ancestor_id) for ancestor_id in ancestor_list ]
 
                 if not ancestors[i]:
                     ancestors[i] = [ index_converted_ancestor_list ]
                 else:
                     ancestors[i].append(index_converted_ancestor_list)
 
-        bases : List[Base]= [''] * len(DAG_)
-        for i in range(len(DAG_)):
-            index_to_node_id = ordering[i]
-            bases[i] = Base(DAG_.base(ordering[i]))
+        bases : List[Base]= [''] * len(dag_)
+        for i in range(len(dag_)):
+            bases[i] = Base(dag_.base(dag_.index_to_node_id(i)))
 
         tr, max_tr_idx = self._modified_viterbi(
             predecessors,
@@ -76,33 +82,35 @@ class PHMM:
             self._transmissions,
             codon_read_only,
             self._alphabet_to_index,
-            len(DAG_),
+            len(dag_),
             len(self)
         )
 
-        corrected_path = [ ordering[x] for x in self.traceback(tr, max_tr_idx) ] # list of node id
+        corrected_path : List[NodeId] = [ dag_.index_to_node_id(x) for x in self.traceback(tr, max_tr_idx) ]
 
-        return DAG_, corrected_path
+        return corrected_path
 
-    def _modified_viterbi(self, predecessors : List[List[Idx]], ancestors : List[List[List[Idx]]], bases : List[Base], e_M : np.ndarray, e_I : np.ndarray, a : np.ndarray, codon_dict : Mapping, alphabet_to_index : Dict[ProteinCode, Idx], N : int, L : int):
+    def _modified_viterbi(self, predecessors_ : List[List[Idx]], ancestors_ : List[List[List[Idx]]], bases_ : List[Base], e_M_ : np.ndarray, e_I_ : np.ndarray, a_ : np.ndarray, codon_dict_ : Mapping, alphabet_to_index_ : Dict[ProteinCode, Idx], N_ : int, L_ : int):
+        """Inner function for Viterbi algorithm.
+           TO DO: optimize the performance with numba compile strategy.
+        """
+        V_M : np.ndarray = np.array(np.ones((N_, L_)) * -np.inf)
+        V_I : np.ndarray = np.array(np.ones((N_, L_)) * -np.inf)
+        V_D : np.ndarray = np.array(np.ones((N_, L_)) * -np.inf)
+        V_N : np.ndarray = np.ones(N_) * -np.inf
+        V_C : np.ndarray = np.ones(N_) * -np.inf
 
-        V_M : np.ndarray = np.array(np.ones((N, L)) * -np.inf)
-        V_I : np.ndarray = np.array(np.ones((N, L)) * -np.inf)
-        V_D : np.ndarray = np.array(np.ones((N, L)) * -np.inf)
-        V_N : np.ndarray = np.ones(N) * -np.inf
-        V_C : np.ndarray = np.ones(N) * -np.inf
-
-        V_M_tr : np.ndarray = np.array(np.zeros((N, L)), dtype='i,i,i,i,i')   # first: type of alignment 0 - M, 1 - I, 2 - D, 3 - N, 4 - C
-        V_I_tr : np.ndarray = np.array(np.zeros((N, L)), dtype='i,i,i,i,i')   # second: DAG node index
-        V_D_tr : np.ndarray = np.array(np.zeros((N, L)), dtype='i,i,i')       # third: hmm residue index
-        V_N_tr : np.ndarray = np.zeros(N, dtype='i,i,i')                         # fourth: parent node ordering index
-        V_C_tr : np.ndarray = np.zeros(N, dtype='i,i,i')                         # fifth: grandparent node ordering index
+        V_M_tr : np.ndarray = np.array(np.zeros((N_, L_)), dtype=[('alignment_type', 'i'), ('dag_node', 'i'), ('hmm_residue', 'i'), ('parent', 'i'), ('grandparent', 'i')])   # first: type of alignment 0 - M, 1 - I, 2 - D, 3 - N, 4 - C
+        V_I_tr : np.ndarray = np.array(np.zeros((N_, L_)), dtype=[('alignment_type', 'i'), ('dag_node', 'i'), ('hmm_residue', 'i'), ('parent', 'i'), ('grandparent', 'i')])   # second: DAG node index
+        V_D_tr : np.ndarray = np.array(np.zeros((N_, L_)), dtype=[('alignment_type', 'i'), ('dag_node', 'i'), ('hmm_residue', 'i'), ('parent', 'i'), ('grandparent', 'i')])       # third: hmm residue index
+        V_N_tr : np.ndarray = np.zeros(N_, dtype=[('alignment_type', 'i'), ('dag_node', 'i'), ('hmm_residue', 'i')])                         # fourth: parent node ordering index
+        V_C_tr : np.ndarray = np.zeros(N_, dtype=[('alignment_type', 'i'), ('dag_node', 'i'), ('hmm_residue', 'i')])                         # fifth: grandparent node ordering index
         tr : List[np.ndarray] = [V_M_tr, V_I_tr, V_D_tr, V_N_tr, V_C_tr]
 
         V_N[0] = 0
 
-        for i in range(1, N): # Node index in topological order
-            for p in predecessors[i]: # x_i^(1)
+        for i in range(1, N_): # Node index in topological order
+            for p in predecessors_[i]: # x_i^(1)
                 assert p < i
 
                 n_to_n = V_N[p]    # N->N
@@ -121,12 +129,12 @@ class PHMM:
                     V_C[i] = c_to_c
                     tr[4][i] = (4,p,0)
 
-            if i == N-1 or bases[i] =='^' or bases[i] == '$':
+            if i == N_-1 or bases_[i] =='^' or bases_[i] == '$':
                 continue
 
-            if ancestors[i]:
+            if ancestors_[i]:
 
-                for ancestor_list in ancestors[i]:
+                for ancestor_list in ancestors_[i]:
                     gg = ancestor_list[2] # x_i^(3) grandgrandparent
                     g = ancestor_list[1] # x_i^(2) grandparent
                     p = ancestor_list[0] # x_i^(1) parent
@@ -134,97 +142,92 @@ class PHMM:
                     assert g < i
                     assert p < i
 
-                    codon = bases[g] + bases[p] + bases[i]
-                    T = codon_dict[codon]
+                    codon = bases_[g] + bases_[p] + bases_[i]
+                    T = codon_dict_[codon]
 
                     # skip if stop codon
                     if T == '*':
                         continue
 
-                    x = alphabet_to_index[T]
+                    x = alphabet_to_index_[T]
 
-                    for j in range(L): # HMM residue index
+                    for j in range(L_): # HMM residue index
 
                         if j != 0: # skip first residue
-                            m_to_m = log(e_M[x][j+1]) - log(e_M[x][0]) + V_M[gg, j-1] + log(a[0][j]) # M->M
+                            m_to_m = log(e_M_[x][j+1]) - log(e_M_[x][0]) + V_M[gg, j-1] + log(a_[0][j]) # M->M
                             if m_to_m > V_M[i, j]: 
                                 V_M[i, j] = m_to_m
                                 tr[0][i,j] = (0, gg, j-1, p, g)
                             
-                            i_to_m = log(e_M[x][j+1]) - log(e_M[x][0]) + V_I[gg, j-1] + log(a[3][j]) # I->M
+                            i_to_m = log(e_M_[x][j+1]) - log(e_M_[x][0]) + V_I[gg, j-1] + log(a_[3][j]) # I->M
                             if i_to_m > V_M[i, j]: 
                                 V_M[i, j] = i_to_m
                                 tr[0][i,j] = (1, gg, j-1, p, g)
                             
-                            d_to_m = log(e_M[x][j+1]) - log(e_M[x][0]) + V_D[gg, j-1] + log(a[5][j]) # D->M
+                            d_to_m = log(e_M_[x][j+1]) - log(e_M_[x][0]) + V_D[gg, j-1] + log(a_[5][j]) # D->M
                             if d_to_m > V_M[i, j]: 
                                 V_M[i, j] = d_to_m
                                 tr[0][i,j] = (2, gg, j-1, p, g)
 
-                        n_to_m = log(e_M[x][j+1]) - log(e_M[x][0]) + V_N[gg] # N->M
+                        n_to_m = log(e_M_[x][j+1]) - log(e_M_[x][0]) + V_N[gg] # N->M
                         if n_to_m > V_M[i, j]: 
                             V_M[i, j] = n_to_m
                             tr[0][i,j] = (3, gg, 0, p, g)
 
-                        m_to_i = log(e_I[x][j+1]) - log(e_I[x][0]) + V_M[gg, j] + log(a[1][j+1]) # M->I
+                        m_to_i = log(e_I_[x][j+1]) - log(e_I_[x][0]) + V_M[gg, j] + log(a_[1][j+1]) # M->I
                         if m_to_i > V_I[i, j]:
                             V_I[i, j] = m_to_i
                             tr[1][i,j] = (0, gg, j, p, g)
                         
-                        i_to_i = log(e_I[x][j+1]) - log(e_I[x][0]) + V_I[gg, j] + log(a[4][j+1]) # I->I
+                        i_to_i = log(e_I_[x][j+1]) - log(e_I_[x][0]) + V_I[gg, j] + log(a_[4][j+1]) # I->I
                         if i_to_i > V_I[i, j]:
                             V_I[i, j] = i_to_i
                             tr[1][i,j] = (1, gg, j, p, g)
 
-                        if j != 0 and j != L-1: # skip first and last residues
-                            m_to_d = V_M[i, j-1] + log(a[2][j+1]) # M->D
+                        if j != 0 and j != L_-1: # skip first and last residues
+                            m_to_d = V_M[i, j-1] + log(a_[2][j+1]) # M->D
                             if m_to_d > V_D[i, j]:
                                 V_D[i, j] = m_to_d
                                 tr[2][i,j] = (0, i, j-1)
                             
-                            d_to_d = V_D[i, j-1] + log(a[6][j+1]) # D->D
+                            d_to_d = V_D[i, j-1] + log(a_[6][j+1]) # D->D
                             if d_to_d > V_D[i, j]:
                                 V_D[i, j] = d_to_d
                                 tr[2][i,j] = (2, i, j-1)
 
-        print("final:")
-        print(V_M)
-        print(V_I)
-        print(V_D)
-        print(V_N)
-        print(V_C)
-
-        max_tr_idx = (4,N-1,0)
+        max_tr_idx = (4,N_-1,0)
 
         return tr, max_tr_idx
 
-    def traceback(self, tr, tr_start_idx):
+    def traceback(self, tr_, tr_start_idx_):
+        """Trace back the traceback matrix so that we could identify the path with best score."""
         
-        node_index_list = []
+        traceback_index_list = []
 
-        t, i, j = tr_start_idx
+        t, i, j = tr_start_idx_
 
         while i != 0:
-            node_index_list.append(i)
+            traceback_index_list.append(i)
 
             if t == 0 or t == 1:
-                node_index_list.append(tr[t][i,j][3])
-                node_index_list.append(tr[t][i,j][4])
-                t, i, j = (tr[t][i,j][0], tr[t][i,j][1], tr[t][i,j][2])
+                traceback_index_list.append(tr_[t][i,j]['parent'])
+                traceback_index_list.append(tr_[t][i,j]['grandparent'])
+                t, i, j = (tr_[t][i,j]['alignment_type'], tr_[t][i,j]['dag_node'], tr_[t][i,j]['hmm_residue'])
             
             elif t == 2:
-                t, i, j = (tr[t][i,j][0], tr[t][i,j][1], tr[t][i,j][2])
+                t, i, j = (tr_[t][i,j]['alignment_type'], tr_[t][i,j]['dag_node'], tr_[t][i,j]['hmm_residue'])
 
             else: # t == 3 or t == 4:
-                t, i, j = (tr[t][i][0], tr[t][i][1], tr[t][i][2])
+                t, i, j = (tr_[t][i]['alignment_type'], tr_[t][i]['dag_node'], tr_[t][i]['hmm_residue'])
 
         # begin node
-        node_index_list.append(i)
+        traceback_index_list.append(i)
         
-        node_index_list.reverse()
-        return node_index_list
+        traceback_index_list.reverse()
+        return traceback_index_list
 
     def transfer_emissons(self) -> np.ndarray:
+        """Transfer the emission probabilites into numpy arrays from HMM_profile HMM object."""
         emissions_from_M : Dict[ProteinCode, np.ndarray] = {ProteinCode(char): np.zeros(len(self)+1) for char in self._alphabet}
         emissions_from_I : Dict[ProteinCode, np.ndarray] = {ProteinCode(char): np.zeros(len(self)+1) for char in self._alphabet}
 
@@ -243,6 +246,7 @@ class PHMM:
             np.vstack([emissions_from_I[c] for c in self._alphabet])
     
     def transfer_transmissions(self) -> np.ndarray:
+        """Transfer the transmission probabilites into numpy arrays from HMM_profile HMM object."""
         # these are all the transmissions we want to observe
         transmission_list = [
             'm->m', 'm->i', 'm->d', 'i->m', 'i->i', 'd->m', 'd->d'
@@ -261,6 +265,7 @@ class PHMM:
         # return everything as a 2D array for performance
         return np.vstack([transmissions[t] for t in transmission_list])
 
+#################################### just for testing
 def locate_grand_parents(DAG_):
     ordering = nx.algorithms.dag.topological_sort(DAG_)
 
@@ -274,6 +279,7 @@ def locate_grand_parents(DAG_):
                         DAG_.nodes[node_id]['ancestors'] = [ancestors]
                     else:
                         DAG_.nodes[node_id]['ancestors'].append(ancestors)
+#############################################
 
 if __name__ == "__main__":
     G = nx.DiGraph()
