@@ -3,11 +3,12 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
+  - conda-forge::python>3.7
   - bioconda::nextflow
   - bioconda::biopython
   - bioconda::hmmer
   - bioconda::virsorter
   - bioconda::checkv
   - conda-forge::pydot
-  - conda-forge::networkx==2.6.3
+  - conda-forge::networkx>=2.6.3
   - conda-forge::numpy

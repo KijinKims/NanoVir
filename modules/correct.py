@@ -14,6 +14,7 @@ from hmm_profile.models import HMM
 import pydot
 import networkx as nx
 import profileHMM
+import time
 
 GraphId = NewType('GraphId', str)
 NodeId = NewType('NodeId', str)
@@ -658,6 +659,8 @@ def make_corrected_consensus_as_seqrecord(corrected_sequence_ : str, consensus_i
     return record
 
 if __name__ == '__main__':
+    start = time.time()
+
     consensuses_path : Path = Path("PR8_H1N1.contigs.fasta")
     dot_path : Path = Path("PR8_H1N1.graph.dot")
     phmmDB_path : Path = Path("HMM/U-RVDBv23.0-prot.hmm")
@@ -728,3 +731,6 @@ if __name__ == '__main__':
 
     
     SeqIO.write(corrected_seqrecords, Path(outdir, output_path), "fasta")
+
+    end = time.time()
+    print(end - start)
