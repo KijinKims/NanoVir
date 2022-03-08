@@ -1,37 +1,37 @@
 from types import MappingProxyType
 
 # Standard genetic code:
-codon = {}
+standard_codon = {}
 # nTn
-codon["TTT"] = codon["TTC"] = "F"
-codon["TTA"] = codon["TTG"] = codon["CTT"] = codon["CTC"] = codon["CTA"] = codon["CTG"] = "L"
-codon["ATT"] = codon["ATC"] = codon["ATA"] = "I"
-codon["ATG"] = "M"
-codon["GTT"] = codon["GTC"] = codon["GTA"] = codon["GTG"] = "V"
+standard_codon["TTT"] = standard_codon["TTC"] = "F"
+standard_codon["TTA"] = standard_codon["TTG"] = standard_codon["CTT"] = standard_codon["CTC"] = standard_codon["CTA"] = standard_codon["CTG"] = "L"
+standard_codon["ATT"] = standard_codon["ATC"] = standard_codon["ATA"] = "I"
+standard_codon["ATG"] = "M"
+standard_codon["GTT"] = standard_codon["GTC"] = standard_codon["GTA"] = standard_codon["GTG"] = "V"
 
 # nCn
-codon["TCT"] = codon["TCC"] = codon["TCA"] = codon["TCG"] = "S"
-codon["CCT"] = codon["CCC"] = codon["CCA"] = codon["CCG"] = "P"
-codon["ACT"] = codon["ACC"] = codon["ACA"] = codon["ACG"] = "T"
-codon["GCT"] = codon["GCC"] = codon["GCA"] = codon["GCG"] = "A"
+standard_codon["TCT"] = standard_codon["TCC"] = standard_codon["TCA"] = standard_codon["TCG"] = "S"
+standard_codon["CCT"] = standard_codon["CCC"] = standard_codon["CCA"] = standard_codon["CCG"] = "P"
+standard_codon["ACT"] = standard_codon["ACC"] = standard_codon["ACA"] = standard_codon["ACG"] = "T"
+standard_codon["GCT"] = standard_codon["GCC"] = standard_codon["GCA"] = standard_codon["GCG"] = "A"
 
 # nAn
-codon["TAT"] = codon["TAC"] = "Y"
-codon["TAA"] = codon["TAG"] = "*" 	#Stop
-codon["CAT"] = codon["CAC"] = "H"
-codon["CAA"] = codon["CAG"] = "Q"
-codon["AAT"] = codon["AAC"] = "N"
-codon["AAA"] = codon["AAG"] = "K"
-codon["GAT"] = codon["GAC"] = "D"
-codon["GAA"] = codon["GAG"] = "E"
+standard_codon["TAT"] = standard_codon["TAC"] = "Y"
+standard_codon["TAA"] = standard_codon["TAG"] = "*" 	#Stop
+standard_codon["CAT"] = standard_codon["CAC"] = "H"
+standard_codon["CAA"] = standard_codon["CAG"] = "Q"
+standard_codon["AAT"] = standard_codon["AAC"] = "N"
+standard_codon["AAA"] = standard_codon["AAG"] = "K"
+standard_codon["GAT"] = standard_codon["GAC"] = "D"
+standard_codon["GAA"] = standard_codon["GAG"] = "E"
 
 # nGn
-codon["TGT"] = codon["TGC"] = "C"
-codon["TGA"] = "*"  			#Stop
-codon["TGG"] = "W"
-codon["CGT"] = codon["CGC"] = codon["CGA"] = codon["CGG"] = "R"
-codon["AGT"] = codon["AGC"] = "S"
-codon["AGA"] = codon["AGG"] = "R"
-codon["GGT"] = codon["GGC"] = codon["GGA"] = codon["GGG"] = "G"
+standard_codon["TGT"] = standard_codon["TGC"] = "C"
+standard_codon["TGA"] = "*"  			#Stop
+standard_codon["TGG"] = "W"
+standard_codon["CGT"] = standard_codon["CGC"] = standard_codon["CGA"] = standard_codon["CGG"] = "R"
+standard_codon["AGT"] = standard_codon["AGC"] = "S"
+standard_codon["AGA"] = standard_codon["AGG"] = "R"
+standard_codon["GGT"] = standard_codon["GGC"] = standard_codon["GGA"] = standard_codon["GGG"] = "G"
 
-codon_read_only = MappingProxyType(codon)
+standard_codon = MappingProxyType(standard_codon)

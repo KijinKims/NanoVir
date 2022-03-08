@@ -3,6 +3,7 @@ try:
     import networkx as nx
     from hmm_profile import reader
     from hmm_profile.models import HMM
+    from numba import jit
 except ImportError:
     print('[Error] Seems you do not have the required python packages. Please check it.')
 
@@ -13,7 +14,7 @@ from collections.abc import Mapping
 from typing import NewType
 
 # NanoVir modules
-from codon_table import codon_read_only
+from codon_table import standard_codon
 from correct import DAG, Idx, NodeId, Base
 
 ProteinCode = NewType('ProteinCode', str)
@@ -80,7 +81,7 @@ class PHMM:
             self._emissions_from_M,
             self._emissions_from_I,
             self._transmissions,
-            codon_read_only,
+            standard_codon,
             self._alphabet_to_index,
             len(dag_),
             len(self)
@@ -90,9 +91,11 @@ class PHMM:
 
         return corrected_path
 
+    #@staticmethod
+    #@jit(nopython=True)
     def _modified_viterbi(self, predecessors_ : List[List[Idx]], ancestors_ : List[List[List[Idx]]], bases_ : List[Base], e_M_ : np.ndarray, e_I_ : np.ndarray, a_ : np.ndarray, codon_dict_ : Mapping, alphabet_to_index_ : Dict[ProteinCode, Idx], N_ : int, L_ : int):
         """Inner function for Viterbi algorithm.
-           TO DO: optimize the performance with numba compile strategy.
+           TO DO: optimize the performance with numba compile strategy. Suspect tr list accounting for error.
         """
         V_M : np.ndarray = np.array(np.ones((N_, L_)) * -np.inf)
         V_I : np.ndarray = np.array(np.ones((N_, L_)) * -np.inf)
@@ -102,7 +105,7 @@ class PHMM:
 
         V_M_tr : np.ndarray = np.array(np.zeros((N_, L_)), dtype=[('alignment_type', 'i'), ('dag_node', 'i'), ('hmm_residue', 'i'), ('parent', 'i'), ('grandparent', 'i')])   # first: type of alignment 0 - M, 1 - I, 2 - D, 3 - N, 4 - C
         V_I_tr : np.ndarray = np.array(np.zeros((N_, L_)), dtype=[('alignment_type', 'i'), ('dag_node', 'i'), ('hmm_residue', 'i'), ('parent', 'i'), ('grandparent', 'i')])   # second: DAG node index
-        V_D_tr : np.ndarray = np.array(np.zeros((N_, L_)), dtype=[('alignment_type', 'i'), ('dag_node', 'i'), ('hmm_residue', 'i'), ('parent', 'i'), ('grandparent', 'i')])       # third: hmm residue index
+        V_D_tr : np.ndarray = np.array(np.zeros((N_, L_)), dtype=[('alignment_type', 'i'), ('dag_node', 'i'), ('hmm_residue', 'i')])       # third: hmm residue index
         V_N_tr : np.ndarray = np.zeros(N_, dtype=[('alignment_type', 'i'), ('dag_node', 'i'), ('hmm_residue', 'i')])                         # fourth: parent node ordering index
         V_C_tr : np.ndarray = np.zeros(N_, dtype=[('alignment_type', 'i'), ('dag_node', 'i'), ('hmm_residue', 'i')])                         # fifth: grandparent node ordering index
         tr : List[np.ndarray] = [V_M_tr, V_I_tr, V_D_tr, V_N_tr, V_C_tr]

@@ -39,7 +39,7 @@ with open(args.output, "w") as output_handle:
         revcom_dna = record.seq.reverse_complement()
 
         for i in range(3):
-            sliced_dna = dna[i:]
+            sliced_dna = revcom_dna[i:]
             sliced_dna = sliced_dna[:(len(sliced_dna)//3)*3]
             pep = sliced_dna.translate()
             pep_record = SeqRecord(

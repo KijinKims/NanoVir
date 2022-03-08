@@ -1,4 +1,5 @@
-from typing import DefaultDict, List, Dict, Tuple
+from re import L
+from typing import DefaultDict, List, Dict, Set, Tuple
 from typing import NewType
 from collections import defaultdict
 from pathlib import Path
@@ -22,6 +23,79 @@ HMMId = NewType('HMMId', str)
 Base = NewType('Base', str)
 Idx = NewType('Idx', int)
 
+def resolve_cycle(digraph_: nx.DiGraph) -> nx.DiGraph :
+
+    # make dictionary of node_id and node attributes
+    node_attr_dict = {}
+    for node_id, attr_dict in digraph_.nodes(data=True):
+        node_attr_dict[node_id] = attr_dict
+
+    # make dictionary of edge ids and edge attributes
+    edge_attr_dict = {}
+    for out_node_id, in_node_id, attr_dict in digraph_.edges(data=True):
+        edge_attr_dict[(out_node_id, in_node_id)] = attr_dict
+
+    print(edge_attr_dict)
+    
+    for e in list(digraph_.edges(data=False)):
+        out_node, in_node = e
+
+        # if cycle length of one or two
+        if out_node == in_node or digraph_.has_edge(in_node, out_node):
+            if not digraph_.has_edge(out_node, in_node):
+                continue
+
+            # create duplicate node and copy the node attributes
+            duplicate_in_node_id = f"{in_node}_1"
+            digraph_.add_node(duplicate_in_node_id)
+            nx.set_node_attributes(digraph_, {duplicate_in_node_id: node_attr_dict[in_node]})
+
+            for predecessor in digraph_.predecessors(in_node):
+                if predecessor == in_node or predecessor == out_node:
+                    continue
+                else:
+                    digraph_.add_edge(predecessor, in_node)
+
+            for successor in digraph_.successors(in_node):
+                if successor == in_node or successor == out_node:
+                    continue
+                else:
+                    digraph_.add_edge(in_node, successor)
+
+            if out_node == in_node:
+                digraph_.add_edge(in_node, duplicate_in_node_id)
+                nx.set_edge_attributes(digraph_, {(in_node,duplicate_in_node_id): edge_attr_dict[(in_node, in_node)]})
+                digraph_.remove_edge(in_node, in_node)
+                
+            if digraph_.has_edge(in_node, out_node):
+                duplicate_out_node_id = f"{out_node}_1"
+                digraph_.add_node(duplicate_out_node_id)
+                nx.set_node_attributes(digraph_, {duplicate_out_node_id: node_attr_dict[out_node]})
+
+                for predecessor in digraph_.predecessors(out_node):
+                    if predecessor == in_node:
+                        continue
+                    else:
+                        digraph_.add_edge(predecessor, out_node)
+                        nx.set_edge_attributes(digraph_, {(predecessor, out_node): edge_attr_dict[(predecessor, out_node)]})
+
+                for successor in digraph_.successors(out_node):
+                    if successor == in_node:
+                        continue
+                    else:
+                        digraph_.add_edge(out_node, successor)
+                        nx.set_edge_attributes(digraph_, {(out_node, successor): edge_attr_dict[(out_node, successor)]})
+
+                # transfer the incoming edges to duplicate node
+                digraph_.add_edge(in_node, duplicate_out_node_id)
+                nx.set_edge_attributes(digraph_, {(in_node, duplicate_out_node_id): edge_attr_dict[(in_node, out_node)]})
+                digraph_.add_edge(out_node, duplicate_in_node_id)
+                nx.set_edge_attributes(digraph_, {(out_node, duplicate_in_node_id): edge_attr_dict[(out_node, in_node)]})
+                digraph_.remove_edge(in_node, out_node)
+                digraph_.remove_edge(out_node, in_node)
+
+    return digraph_
+            
 class DAG:
     """The class encapsulating Networkx Digraph object.
 
@@ -40,7 +114,7 @@ class DAG:
         """Inits DAG with a given Networkx Digraph object."""
         self._name : GraphId = GraphId(digraph_.graph['name'])
         self._graph : nx.DiGraph = nx.DiGraph(digraph_)
-        self._ordering : List[NodeId] = [NodeId(node_id) for node_id in nx.algorithms.dag.topological_sort(self._graph)]
+        self._ordering = list(nx.algorithms.dag.topological_sort(self._graph))
         self._len : int = len(self._graph)
         self._source : NodeId = NodeId(self._ordering[0])
         self._sink : NodeId = NodeId(self._ordering[len(self)-1])
@@ -69,6 +143,10 @@ class DAG:
         """Set orted order of nodes in the graph. Typically, they are topologically sorted. Afterwards, update self._node_id_to_index_dict."""
         self._ordering = ordering_
         self.set_node_id_to_index()
+
+    def update_ordering(self):
+        """Update ordering"""
+        self.ordering = list(nx.algorithms.dag.topological_sort(self._graph))
 
     @property
     def source(self) -> NodeId :
@@ -119,8 +197,6 @@ class DAG:
         Args:
             edge_threshold_:
                 An integer indicating the threshold of weight for filtering edges in the graph.
-        Returns:
-            Updated object itself.
         """
         assert edge_threshold_ > 0
         self._edge_threshold = edge_threshold_
@@ -130,11 +206,12 @@ class DAG:
         self.leave_only_one_source()
         self.leave_only_one_sink()
 
-        return self
-
     def filter_by_edge_weight(self, threshold_: int) :
         """Remove all edges with weight<threshold from the graph."""
-        edges = [(n1, n2) for n1, n2, w in self.edges(data="weight") if int(w) < threshold_]
+        edges = []
+        for (n1, n2, w) in self.edges(data="weight"):
+            if w == None or int(w) < threshold_:
+                edges.append((n1, n2))
         self._graph.remove_edges_from(edges)
 
     def clean_obsolete_nodes(self):
@@ -157,7 +234,7 @@ class DAG:
             if self.in_degree(node_id) == 0:
                 sources.append(node_id)
         
-        self._graph.add_edges_from([(self.source, x) for x in sources])
+        self.add_edges_from([(self.source, x) for x in sources])
 
     def leave_only_one_sink(self):
         """Connect all zero outdegree nodes other than sink to sink"""
@@ -168,7 +245,7 @@ class DAG:
             if self.out_degree(node_id) == 0:
                 sinks.append(node_id)
         
-        self._graph.add_edges_from([(x, self.sink) for x in sinks])
+        self.add_edges_from([(x, self.sink) for x in sinks])
 
     def set_node_attributes(self, *args, **argv) :
         """Set the node attributes. Actually, just forward the arguments to the set_node_attributes() function of Networkx library."""
@@ -185,6 +262,22 @@ class DAG:
     def get_edge_attributes(self, *args, **argv) :
         """Return the edge attributes. Actually, just forward the arguments to the get_edge_attributes() function of Networkx library."""
         return nx.get_edge_attributes(self._graph, *args, **argv)
+
+    def add_node(self, *args, **argv) :
+        """Add a node. Actually, just forward the arguments to the add_node() function of Networkx library."""
+        return self._graph.add_node(*args, **argv)
+
+    def add_nodes_from(self, *args, **argv) :
+        """Add a node. Actually, just forward the arguments to the add_nodes_from() function of Networkx library."""
+        return self._graph.add_nodes_from(*args, **argv)
+
+    def add_edge(self, *args, **argv) :
+        """Add an edge. Actually, just forward the arguments to the add_edge() function of Networkx library."""
+        return self._graph.add_edge(*args, **argv)
+
+    def add_edges_from(self, *args, **argv) :
+        """Add an edge. Actually, just forward the arguments to the add_edges_from() function of Networkx library."""
+        return self._graph.add_edges_from(*args, **argv)
 
     def predecessors(self, node_id_ : NodeId) -> List[NodeId] :
         """Return the predecessor of the node with given node id. A predecessor of n is a node m such that there exists a directed edge from m to n."""
@@ -215,12 +308,19 @@ class DAG:
     def bases(self) -> Dict[NodeId, Base] :
         """Return dictionary of bases of nodes with their node id as keys."""
         return self.nodes(data="base")
+    
+    def update_base_dict(self) :
+        self._base_dict = dict(self.bases())
 
     def base(self, node_id_ : NodeId) -> Base :
         """Return the base of the node with given node id."""
-        return self.bases()[node_id_]
+        return self._base_dict[node_id_]
 
-    def export_dot(self, dot_path_ : Path) :
+    def neighbors(self, node_id_ : NodeId) :
+        """Return an iterator over successor nodes of node_id."""
+        return self._graph.neighbors(node_id_)
+
+    def export_dot(self, dot_path_ : Path, horizontal_ = True) :
         """Export the DAG with updated attributes as graphviz DOT format.
            Set node's base as node's label and edge's weight as edge's label.
            Fill the node that is in consensus sequene only before correction with blue color.
@@ -229,6 +329,9 @@ class DAG:
 
            Args:
               dot_path_: A path obeject indicating the path of the file to which graph notation in DOT format is written.
+              
+              Keyword:
+                horizontal: A boolean indicating the orientation of graph when displayed
         """
         # set node label to be displayed in graphviz
         attrs = defaultdict(dict)
@@ -256,6 +359,10 @@ class DAG:
             attrs[(u, v)]['label'] = w
 
         self.set_edge_attributes(attrs)
+
+        # determine the orientation of graph when displayed
+        if horizontal_:
+            self._graph.graph['graph']={'rankdir':'LR'}
 
         nx.drawing.nx_pydot.write_dot(self._graph, str(dot_path_))
 
@@ -299,9 +406,6 @@ class DAG:
         self.complement()
         self.swap_source_sink()
 
-    def leave_only_indels(self, path_ : List[NodeId]):
-        pass
-
     def trim_path(self, path_ : List[NodeId]):
         """Trim the both ends of the given path until any initial consensus node is encountered.
            Corrected consensus sequence should be shorter than initial consensus sequence.
@@ -326,7 +430,7 @@ class DAG:
         for node_id in self.nodes():
             if node_id not in attrs:
                 attrs[node_id]["corrected_consensus"] = 'false'
-        dag.set_node_attributes(attrs)
+        self.set_node_attributes(attrs)
 
     def topological_sort(self) -> List[NodeId] :
         """Sort the nodes in topogical order."""
@@ -341,7 +445,7 @@ class DAG:
 
     def set_node_id_to_index(self) :
         """Indexize node ids to index in self._ordering in order to make them fit to numpy operations."""
-        self._node_id_to_index_dict : Dict[NodeId, Idx] = { NodeId(val) : Idx(idx) for idx, val in enumerate(self.ordering) }
+        self._node_id_to_index_dict : Dict[NodeId, Idx] = { NodeId(val) : Idx(idx) for idx, val in enumerate(self._ordering) }
 
     def node_id_to_index(self, node_id_ : NodeId) -> Idx :
         """Return index in self._ordering of the node with given node id."""
@@ -349,39 +453,166 @@ class DAG:
 
     def index_to_node_id(self, idx_ : Idx) -> NodeId :
         """Return the node id corresponding given index in self._ordering."""
-        return self.ordering[idx_]
+        return self._ordering[idx_]
+
+    def aggressive_mode(self) :
+        self.aggressive_deletion()
+        self.aggressive_insertion()
+
+    def aggressive_deletion(self) :
+        """Add synthetic nodes and edges to cope with deletion errors in homopolymer regions"""
+        new_nodes = []
+        new_edges = []
+        for node_id in self.nodes():
+            self.set_node_attributes({node_id: {"synthetic":False}})
+            if node_id == self.source or node_id == self.sink:
+                continue
+            else:
+                duplicate_node_id = "dupicate_" + node_id
+                new_nodes.append((duplicate_node_id, dict(base=self.base(node_id), synthetic=True, initial_consensus=False)))
+                new_edges.append((node_id, duplicate_node_id))
+                for neighbor_id in self.neighbors(node_id):
+                    new_edges.append((duplicate_node_id, neighbor_id))
+        
+        self.add_nodes_from(new_nodes)
+        self.add_edges_from(new_edges)
+
+    def aggressive_insertion(self) :
+        """Add synthetic nodes to cope with insertion errors in homopolymer regions"""
+        for node_id in self.ordering:
+            curr_base = self.base(node_id)
+
+            curr_node_id = node_id
+            homopol = False
+            homopol_start_node_id = curr_node_id
+            
+            while True:
+                for predecessor in self.predecessors(curr_node_id):
+                    if self.get_node_attributes('synthetic')[predecessor]:
+                        continue
+                    if self.base(predecessor) == curr_base:
+                        homopol_start_node_id = predecessor
+                        homopol = True
+                if homopol_start_node_id != curr_node_id:
+                    curr_node_id = homopol_start_node_id
+                else:
+                    break
+
+            if homopol:
+                for predecessor in self.predecessors(homopol_start_node_id):
+                    self.add_edge(predecessor, node_id)
+
+    def leave_only_indel_errors(self, consensus_path : List[NodeId]) :
+        """If corrected subpath has the same length with original subpath, correction is cancelled. 
+           This is for excluding correction of substitution erorrs that could hide true variants.
+        """
+        for idx, node_id in enumerate(consensus_path):
+
+            if self.in_degree(node_id) > 1:
+                print("node_id:", node_id)
+                init_consensus_predecessor_id=""
+                corr_consensus_predecessor_id=""
+                for predecessor_id in self.predecessors(node_id):
+                    if self.get_node_attributes('initial_consensus')[predecessor_id] == 'true' and self.get_node_attributes('corrected_consensus')[predecessor_id] == 'false':
+                        print(predecessor_id, " init:", self.get_node_attributes('initial_consensus')[predecessor_id])
+                        init_consensus_predecessor_id=predecessor_id
+
+                    if self.get_node_attributes('initial_consensus')[predecessor_id] == 'false' and self.get_node_attributes('corrected_consensus')[predecessor_id] == 'true':
+                        print(predecessor_id, " corr:", self.get_node_attributes('corrected_consensus')[predecessor_id])
+                        corr_consensus_predecessor_id=predecessor_id
+
+                if init_consensus_predecessor_id != "" and corr_consensus_predecessor_id != "":
+                    print(init_consensus_predecessor_id, corr_consensus_predecessor_id)
+                    init_consensus_path = [init_consensus_predecessor_id]
+                    curr_id = init_consensus_predecessor_id
+                    continued = True
+                    l = 1
+
+                    while continued :
+                        continued = False
+                        for predecessor_id in self.predecessors(curr_id):
+                            if self.get_node_attributes('initial_consensus')[predecessor_id] == 'true' and self.get_node_attributes('corrected_consensus')[predecessor_id] == 'false':
+                                init_consensus_path.append(predecessor_id)
+                                continued = True
+                                curr_id = predecessor_id
+                                l += 1
+
+                    corr_consensus_path = [corr_consensus_predecessor_id]
+                    curr_id = corr_consensus_predecessor_id
+                    continued = True
+
+                    while continued :
+                        continued = False
+                        for predecessor_id in self.predecessors(curr_id):
+                            if self.get_node_attributes('initial_consensus')[predecessor_id] == 'false' and self.get_node_attributes('corrected_consensus')[predecessor_id] == 'true':
+                                init_consensus_path.append(predecessor_id)
+                                continued = True
+                                curr_id = predecessor_id
+                else:
+                    continue
+
+                print(init_consensus_path)
+                print(corr_consensus_path)
+                if len(init_consensus_path) == len(corr_consensus_path):
+                    for node_id in corr_consensus_path:
+                        self.set_node_attributes({node_id: {'corrected_consensus': 'false'}})
+
+                    for node_id in init_consensus_path:
+                        self.set_node_attributes({node_id: {'corrected_consensus': 'true'}})
+                    
+                    print(consensus_path[idx-l:idx])
+                    consensus_path[idx-l:idx] = init_consensus_path[::-1]
+                    print(consensus_path[idx-l:idx])
+
+        return consensus_path
         
 
-def read_consensuses(consensuses_path_) -> List[SeqRecord]:
+def read_consensuses(consensuses_path_, consensus_ids) -> Dict[TigId, SeqRecord]:
     """Read the consensuses from fasta.
        Store them as list of SeqRecord objects in Biopython.
     """
-    return SeqIO.parse(consensuses_path_, "fasta")
+    seqrecords = {}
+    for record in SeqIO.parse(consensuses_path_, "fasta"):
+        if record.id in consensus_ids:
+            seqrecords[TigId(record.id)] = record
+    return seqrecords
 
-def read_phmmDB(phmmDB_path_ : Path) -> Dict[HMMId, HMM]:
+def read_dot(dot_path_ : Path, consensus_ids) -> Dict[TigId, DAG] :
+    """Read the DAGs from given DOT file.
+       store them as list of DAG objects.
+    """
+    pydot_graphs = pydot.graph_from_dot_file(dot_path_)
+    
+    graphs = map(nx.nx_pydot.from_pydot, pydot_graphs)
+    
+    dags = {}
+    for graph in graphs:
+        dag = DAG(graph)
+        if dag._name in consensus_ids:
+            dags[TigId(dag._name)] = dag
+
+    return dags
+
+def read_phmmDB(phmmDB_path_ : Path, phmm_ids) -> Dict[HMMId, HMM]:
     """Read the profile HMMs.
        Store them as dictionary of HMM objects in profileHMM module with each HMM's id as a key.
     """
     f = phmmDB_path_.open()
     model_generator = reader.read_all(f)
     
-    return  {HMMId(x.metadata.model_name): x for x in model_generator}
+    models = {}
+    for x in model_generator:
+        if x.metadata.model_name in phmm_ids:
+            models[HMMId(x.metadata.model_name)] = x
 
-def read_dot(dot_path_ : Path) -> List[DAG] :
-    """Read the DAGs from given DOT file.
-       store them as list of DAG objects."""
-    graphs = pydot.graph_from_dot_file(dot_path_)
-    
-    graphs = map(nx.nx_pydot.from_pydot, graphs)
-    
-    dags = [DAG(graph) for graph in graphs]
+    return models
 
-    return dags
 
 def parse_hmmscanresult(hmmscan_domtbl_path_ : Path) -> List[HSP]:
     """Read the hmmscan domain hits from domtbl file.
        Store them as list of HSPs object in Biopython SearchIO module.
-       For unique consensus and hmm pair, only a hit with the best score is stored for reducing redundancies."""
+       For unique consensus and hmm pair, only a hit with the best score is stored for reducing redundancies.
+    """
     domtbl = SearchIO.parse(hmmscan_domtbl_path_, "hmmscan3-domtab")
     
     uniq_consensus_HMM_dict = {}
@@ -411,76 +642,89 @@ def parse_hmmscanresult(hmmscan_domtbl_path_ : Path) -> List[HSP]:
     
     return list(uniq_consensus_HMM_dict.values())
 
-def pair_consensus_DAG(consensuses_ : List[SeqRecord], dags_ : List[DAG]) -> DefaultDict[TigId, Tuple[SeqRecord, DAG]]:
-    """Pair a consensus and DAG with a matching consensus id."""
-    consensuses_dict = {x.id: x for x in consensuses_}
-    dags_dict = {x.name: x for x in dags_}
-    pair_dict : DefaultDict[TigId, Tuple[SeqRecord, DAG]] = defaultdict(tuple)
-
-    for key in consensuses_dict:
-        pair_dict[TigId(key)] = (consensuses_dict[key], dags_dict[key])
-
-    return pair_dict
-
 def correct_consensus(dag_ : DAG, phmm_ : HMM) -> List[NodeId] :
-    '''Return corrected consensus path in DAG using Viterbi algorithm.'''
+    """Return corrected consensus path in DAG using Viterbi algorithm."""
     PHMM = profileHMM.PHMM(phmm_)
     return PHMM.modified_viterbi(dag_)
 
-def write_corrected_consensus(corrected_sequence_ : str, consensus_id_ : TigId, phmm_id_ : HMMId, f_ : Path):
-    """Write the corrected consensus as a FASTA format with the header including consensus ID and HMM ID used for correction"""
+def make_corrected_consensus_as_seqrecord(corrected_sequence_ : str, consensus_id_ : TigId, phmm_id_ : HMMId):
+    """Write the corrected consensus as a FASTA format with the header including consensus ID and HMM ID used for correction."""
     seqid = f'{consensus_id_}_corrected_with_{phmm_id_}'
     record = SeqRecord(
         Seq(corrected_sequence_),
         id=seqid,
         description=f'{consensus_id_} len={len(corrected_sequence_)}')
 
-    SeqIO.write(record, f_, "fasta")
+    return record
 
 if __name__ == '__main__':
-    consensuses_path : Path = Path("consensuses.fasta")
-    phmmDB_path : Path = Path("FAM173.hmm")
-    dot_path : Path = Path("graph.dot")
-    hmmscan_domtbl_path : Path = Path("hmmscan.domtbl")
+    consensuses_path : Path = Path("PR8_H1N1.contigs.fasta")
+    dot_path : Path = Path("PR8_H1N1.graph.dot")
+    phmmDB_path : Path = Path("HMM/U-RVDBv23.0-prot.hmm")
+    hmmscan_domtbl_path : Path = Path("U_RVDB_e1000.domtbl")
     output_path : Path = Path("corrected_consensuses.fasta")
-    output_dot : Path = Path("output.dot")
+    outdir : Path = Path("outdir_only_indel")
+    outdir.mkdir(parents=True, exist_ok=True)
     minimum_edge_weight : int = 2
-    
-    phmms = read_phmmDB(phmmDB_path)
+    aggr_mode : bool = False
+    only_indel_mode : bool = True
+
     hmmscan_domtbl = parse_hmmscanresult(hmmscan_domtbl_path)
 
-    consensuses = read_consensuses(consensuses_path)
-    dags = read_dot(dot_path)
-    consensus_dag = pair_consensus_DAG(consensuses, dags)
+    hit_consensus_id_set : Set[TigId] = set()
+    hit_phmm_id_set : Set[TigId] = set()
 
     for hsp in hmmscan_domtbl:
-        consensus_id       = hsp.query_id.split("_rframe")[0]
+        hit_consensus_id_set.add(TigId(hsp.query_id.split("_rframe")[0]))
+        hit_phmm_id_set.add(TigId(hsp.hit_id))
+
+    consensuses = read_consensuses(consensuses_path, hit_consensus_id_set)
+    dags = read_dot(dot_path, hit_consensus_id_set)
+    phmms = read_phmmDB(phmmDB_path, hit_phmm_id_set)
+
+    corrected_seqrecords = []
+
+    for hsp in hmmscan_domtbl:
+        consensus_id    = hsp.query_id.split("_rframe")[0]
         matched_phmm_id = hsp.hit_id
 
-        consensus          = consensus_dag[consensus_id][0]
-        dag             = consensus_dag[consensus_id][1]
+        consensus       = consensuses[consensus_id]
+        dag             = dags[consensus_id]
+        
         matched_phmm    = phmms[matched_phmm_id]
-
+        print(f"{consensus_id}_{matched_phmm_id}")
         # initial base attribute is wrapped with double quotes
         dag.base_quote_strip()
 
         # if hit appeared in reverse direction, dag also reversed
         if hsp.direction == "-":
             dag.reverse_complement()
-
+            
         # filter edges with low weight
         dag.prun(minimum_edge_weight)
+        dag.update_ordering()
+        dag.update_base_dict()
+        
+        # aggressive mode
+        if aggr_mode:
+            dag.aggressive_mode()
+            dag.update_ordering()
+            dag.update_base_dict()
 
-        # update dag's properties
-        dag.ordering = dag.topological_sort()
         dag.set_ancestors()
 
         # correct initial consensus
         corrected_path = correct_consensus(dag, matched_phmm)
-        corrected_path = dag.trim_path(corrected_path)
         dag.set_corrected_consensus_attribute(corrected_path)
 
+        if only_indel_mode:
+            corrected_path = dag.leave_only_indel_errors(corrected_path)
+
+
         # export results
-        dag.export_dot(output_dot)
+        dag.export_dot(Path(outdir, f"{consensus_id}_{matched_phmm_id}.dot"), horizontal_=True)
         corrected_sequence = dag.extract_base_with_node_id_list(corrected_path)
-        write_corrected_consensus(corrected_sequence, consensus_id, matched_phmm_id, output_path)
+        corrected_seqrecords.append(make_corrected_consensus_as_seqrecord(corrected_sequence, consensus_id, matched_phmm_id))
+
+    
+    SeqIO.write(corrected_seqrecords, Path(outdir, output_path), "fasta")
