@@ -659,7 +659,7 @@ parser.add_argument('--contigs', '-x', nargs='?')
 parser.add_argument('--graphs', '-g', nargs='?')
 parser.add_argument('--outdir', '-o', nargs='?')
 parser.add_argument('--domtbl', '-d', nargs='?')
-parser.add_argument('--hmm', '-h', nargs='?')
+parser.add_argument('--hmm', nargs='?')
 
 args = parser.parse_args()
 
