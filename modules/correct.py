@@ -14,7 +14,10 @@ from hmm_profile.models import HMM
 import pydot
 import networkx as nx
 import profileHMM
+import sys
+import os
 import time
+import argparse
 
 GraphId = NewType('GraphId', str)
 NodeId = NewType('NodeId', str)
@@ -510,20 +513,16 @@ class DAG:
         for idx, node_id in enumerate(consensus_path):
 
             if self.in_degree(node_id) > 1:
-                print("node_id:", node_id)
                 init_consensus_predecessor_id=""
                 corr_consensus_predecessor_id=""
                 for predecessor_id in self.predecessors(node_id):
                     if self.get_node_attributes('initial_consensus')[predecessor_id] == 'true' and self.get_node_attributes('corrected_consensus')[predecessor_id] == 'false':
-                        print(predecessor_id, " init:", self.get_node_attributes('initial_consensus')[predecessor_id])
                         init_consensus_predecessor_id=predecessor_id
 
                     if self.get_node_attributes('initial_consensus')[predecessor_id] == 'false' and self.get_node_attributes('corrected_consensus')[predecessor_id] == 'true':
-                        print(predecessor_id, " corr:", self.get_node_attributes('corrected_consensus')[predecessor_id])
                         corr_consensus_predecessor_id=predecessor_id
 
                 if init_consensus_predecessor_id != "" and corr_consensus_predecessor_id != "":
-                    print(init_consensus_predecessor_id, corr_consensus_predecessor_id)
                     init_consensus_path = [init_consensus_predecessor_id]
                     curr_id = init_consensus_predecessor_id
                     continued = True
@@ -552,8 +551,6 @@ class DAG:
                 else:
                     continue
 
-                print(init_consensus_path)
-                print(corr_consensus_path)
                 if len(init_consensus_path) == len(corr_consensus_path):
                     for node_id in corr_consensus_path:
                         self.set_node_attributes({node_id: {'corrected_consensus': 'false'}})
@@ -561,9 +558,7 @@ class DAG:
                     for node_id in init_consensus_path:
                         self.set_node_attributes({node_id: {'corrected_consensus': 'true'}})
                     
-                    print(consensus_path[idx-l:idx])
                     consensus_path[idx-l:idx] = init_consensus_path[::-1]
-                    print(consensus_path[idx-l:idx])
 
         return consensus_path
         
@@ -658,15 +653,26 @@ def make_corrected_consensus_as_seqrecord(corrected_sequence_ : str, consensus_i
 
     return record
 
+parser = argparse.ArgumentParser(prog='NanoVir', description='%(prog)s is a command line program for correcting sequencing errors in Nanopore reads with pHMM DB.')
+parser.add_argument('--prefix', '-p', nargs='?')
+parser.add_argument('--contigs', '-x', nargs='?')
+parser.add_argument('--graphs', '-g', nargs='?')
+parser.add_argument('--outdir', '-o', nargs='?')
+parser.add_argument('--domtbl', '-d', nargs='?')
+parser.add_argument('--hmm', '-h', nargs='?')
+
+args = parser.parse_args()
+
 if __name__ == '__main__':
     start = time.time()
+    print("")
 
-    consensuses_path : Path = Path("PR8_H1N1.contigs.fasta")
-    dot_path : Path = Path("PR8_H1N1.graph.dot")
-    phmmDB_path : Path = Path("HMM/U-RVDBv23.0-prot.hmm")
-    hmmscan_domtbl_path : Path = Path("U_RVDB_e1000.domtbl")
-    output_path : Path = Path("corrected_consensuses.fasta")
-    outdir : Path = Path("outdir_only_indel")
+    consensuses_path : Path = Path(args.contigs)
+    dot_path : Path = Path(args.graphs)
+    phmmDB_path : Path = Path(args.hmm)
+    hmmscan_domtbl_path : Path = Path(args.domtbl)
+    output_path : Path = Path(f"{args.prefix}.nanovir.corrected.fasta")
+    outdir : Path = Path(args.outdir)
     outdir.mkdir(parents=True, exist_ok=True)
     minimum_edge_weight : int = 2
     aggr_mode : bool = False
@@ -681,8 +687,11 @@ if __name__ == '__main__':
         hit_consensus_id_set.add(TigId(hsp.query_id.split("_rframe")[0]))
         hit_phmm_id_set.add(TigId(hsp.hit_id))
 
+    print("read contigs")
     consensuses = read_consensuses(consensuses_path, hit_consensus_id_set)
+    print("read graphs")
     dags = read_dot(dot_path, hit_consensus_id_set)
+    print("read pHMM DB")
     phmms = read_phmmDB(phmmDB_path, hit_phmm_id_set)
 
     corrected_seqrecords = []
@@ -695,7 +704,7 @@ if __name__ == '__main__':
         dag             = dags[consensus_id]
         
         matched_phmm    = phmms[matched_phmm_id]
-        print(f"{consensus_id}_{matched_phmm_id}")
+
         # initial base attribute is wrapped with double quotes
         dag.base_quote_strip()
 
