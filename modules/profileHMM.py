@@ -3,7 +3,6 @@ try:
     import networkx as nx
     from hmm_profile import reader
     from hmm_profile.models import HMM
-    from numba import jit
 except ImportError:
     print('[Error] Seems you do not have the required python packages. Please check it.')
 
