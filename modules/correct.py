@@ -18,6 +18,7 @@ import sys
 import os
 import time
 import argparse
+from multiprocessing import Process, Manager
 
 GraphId = NewType('GraphId', str)
 NodeId = NewType('NodeId', str)
@@ -573,20 +574,23 @@ def read_consensuses(consensuses_path_, consensus_ids) -> Dict[TigId, SeqRecord]
             seqrecords[TigId(record.id)] = record
     return seqrecords
 
+def mp_from_pydot(l, x, consensus_ids):
+    
+    if x.graph_name in consensus_ids:
+        l.append(DAG(nx.nx_pydot.from_pydot(x)))
+
 def read_dot(dot_path_ : Path, consensus_ids) -> Dict[TigId, DAG] :
     """Read the DAGs from given DOT file.
        store them as list of DAG objects.
     """
     pydot_graphs = pydot.graph_from_dot_file(dot_path_)
     
-    graphs = map(nx.nx_pydot.from_pydot, pydot_graphs)
+    manager = Manager()
+    dags = manager.list()
+    job = [Process(target=mp_from_pydot, args=(dags,pydot_graph, consensus_ids)) for pydot_graph in pydot_graphs]
+    _ = [p.start() for p in job]
+    _ = [p.join() for p in job]
     
-    dags = {}
-    for graph in graphs:
-        dag = DAG(graph)
-        if dag._name in consensus_ids:
-            dags[TigId(dag._name)] = dag
-
     return dags
 
 def read_phmmDB(phmmDB_path_ : Path, phmm_ids) -> Dict[HMMId, HMM]:
