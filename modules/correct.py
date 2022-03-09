@@ -583,8 +583,10 @@ def read_dot(dot_path_ : Path, consensus_ids) -> Dict[TigId, DAG] :
     """Read the DAGs from given DOT file.
        store them as list of DAG objects.
     """
+    print("convert dot to pydot object")
     pydot_graphs = pydot.graph_from_dot_file(dot_path_)
     
+    print("covert pydot object to networkx graph object")
     manager = Manager()
     dags = manager.list()
     job = [Process(target=mp_from_pydot, args=(dags,pydot_graph, consensus_ids)) for pydot_graph in pydot_graphs]
