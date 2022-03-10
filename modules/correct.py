@@ -1,3 +1,4 @@
+from operator import mod
 from re import L
 from typing import DefaultDict, List, Dict, Set, Tuple
 from typing import NewType
@@ -19,6 +20,7 @@ import os
 import time
 import argparse
 from multiprocessing import Process, Manager
+import shutil
 
 GraphId = NewType('GraphId', str)
 NodeId = NewType('NodeId', str)
@@ -574,25 +576,44 @@ def read_consensuses(consensuses_path_, consensus_ids) -> Dict[TigId, SeqRecord]
             seqrecords[TigId(record.id)] = record
     return seqrecords
 
-def mp_from_pydot(l, x, consensus_ids):
-    
-    if x.graph_name in consensus_ids:
-        l.append(DAG(nx.nx_pydot.from_pydot(x)))
-
 def read_dot(dot_path_ : Path, consensus_ids) -> Dict[TigId, DAG] :
     """Read the DAGs from given DOT file.
        store them as list of DAG objects.
     """
-    print("convert dot to pydot object")
-    pydot_graphs = pydot.graph_from_dot_file(dot_path_)
+
+    dags = {}
+
+    tig_id = ""
+    next_tig_id = ""
     
-    print("covert pydot object to networkx graph object")
-    manager = Manager()
-    dags = manager.list()
-    job = [Process(target=mp_from_pydot, args=(dags,pydot_graph, consensus_ids)) for pydot_graph in pydot_graphs]
-    _ = [p.start() for p in job]
-    _ = [p.join() for p in job]
+    a_digraph_in_dot=""
+    tmp_dir = Path("tmp")
+    tmp_dir.mkdir(exist_ok=True)
+    with open(dot_path_) as dot:
+        for line in dot:
+            if line.startswith('digraph'):
+
+                next_tig_id = line.split()[1]
+
+                if a_digraph_in_dot and tig_id in consensus_ids:
+                    with open(Path(tmp_dir, f"{tig_id}.dot"), "w") as tmp:
+                        tmp.write(a_digraph_in_dot)
+                        dags[tig_id] = DAG(nx.nx_pydot.read_dot(Path(tmp_dir, f"{tig_id}.dot")))
+                
+                a_digraph_in_dot = line
+                tig_id = next_tig_id
+            else:
+                a_digraph_in_dot += line
+                
     
+    # last graph
+    if tig_id in consensus_ids:
+        with open(Path(tmp_dir, f"{tig_id}.dot"), "w") as tmp:
+            tmp.write(a_digraph_in_dot)
+            dags[tig_id] = DAG(nx.nx_pydot.read_dot(Path(tmp_dir, f"{tig_id}.dot")))
+
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+                
     return dags
 
 def read_phmmDB(phmmDB_path_ : Path, phmm_ids) -> Dict[HMMId, HMM]:
@@ -693,12 +714,12 @@ if __name__ == '__main__':
         hit_consensus_id_set.add(TigId(hsp.query_id.split("_rframe")[0]))
         hit_phmm_id_set.add(TigId(hsp.hit_id))
 
+    print("read pHMM DB")
+    phmms = read_phmmDB(phmmDB_path, hit_phmm_id_set)
     print("read contigs")
     consensuses = read_consensuses(consensuses_path, hit_consensus_id_set)
     print("read graphs")
     dags = read_dot(dot_path, hit_consensus_id_set)
-    print("read pHMM DB")
-    phmms = read_phmmDB(phmmDB_path, hit_phmm_id_set)
 
     corrected_seqrecords = []
 
