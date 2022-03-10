@@ -714,12 +714,12 @@ if __name__ == '__main__':
         hit_consensus_id_set.add(TigId(hsp.query_id.split("_rframe")[0]))
         hit_phmm_id_set.add(TigId(hsp.hit_id))
 
+    print("read graphs")
+    dags = read_dot(dot_path, hit_consensus_id_set)
     print("read pHMM DB")
     phmms = read_phmmDB(phmmDB_path, hit_phmm_id_set)
     print("read contigs")
     consensuses = read_consensuses(consensuses_path, hit_consensus_id_set)
-    print("read graphs")
-    dags = read_dot(dot_path, hit_consensus_id_set)
 
     corrected_seqrecords = []
 
