@@ -696,7 +696,7 @@ if __name__ == '__main__':
     only_indel_mode : bool = True
 
 
-    print("read hmmscan result", time.time())
+    print("Read hmmscan result", time.strftime("%H:%M:%S", time.time()))
     hmmscan_domtbl = parse_hmmscanresult(hmmscan_domtbl_path)
 
     hit_consensus_id_set : Set[TigId] = set()
@@ -706,15 +706,15 @@ if __name__ == '__main__':
         hit_consensus_id_set.add(TigId(hsp.query_id.split("_rframe")[0]))
         hit_phmm_id_set.add(TigId(hsp.hit_id))
 
-    print("split graphs", time.time())
+    print("Split graphs", time.strftime("%H:%M:%S", time.time()))
     split_dot(dot_path, hit_consensus_id_set, tmpdir)
-    print("read pHMM DB", time.time())
+    print("Read pHMM DB", time.strftime("%H:%M:%S", time.time()))
     phmms = read_phmmDB(phmmDB_path, hit_phmm_id_set)
 
     for hsp in hmmscan_domtbl:
         consensus_id    = hsp.query_id.split("_rframe")[0]
         matched_phmm_id = hsp.hit_id
-        print(f"Correct the contig {consensus_id} with {matched_phmm_id}", time.time())
+        print(f"Correct the contig {consensus_id} with {matched_phmm_id}", time.strftime("%H:%M:%S", time.time()))
 
         dag             = read_dot(consensus_id)
         
@@ -745,4 +745,4 @@ if __name__ == '__main__':
         SeqIO.write(make_corrected_consensus_as_seqrecord(corrected_sequence, consensus_id, matched_phmm_id), Path(outdir, f"{consensus_id}_{matched_phmm_id}.fasta"), "fasta")
 
     end = time.time()
-    print(end - start)
+    print(time.strftime("%H:%M:%S", end - start))
