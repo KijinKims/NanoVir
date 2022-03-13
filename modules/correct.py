@@ -1,5 +1,3 @@
-from operator import mod
-from re import L
 from typing import DefaultDict, List, Dict, Set, Tuple
 from typing import NewType
 from collections import defaultdict
@@ -683,6 +681,7 @@ parser.add_argument('--hmm', nargs='?')
 args = parser.parse_args()
 
 if __name__ == '__main__':
+    sys.stdout = open('file', 'w')
     start = time.time()
     print(f"Start NanoVir correction of {args.prefix}.")
 
@@ -748,3 +747,4 @@ if __name__ == '__main__':
 
     end = time.time()
     print(end - start)
+    sys.stdout.close()
