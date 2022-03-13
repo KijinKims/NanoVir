@@ -705,6 +705,8 @@ if __name__ == '__main__':
     aggr_mode : bool = False
     only_indel_mode : bool = True
 
+
+    print("read hmmscan result", time.time())
     hmmscan_domtbl = parse_hmmscanresult(hmmscan_domtbl_path)
 
     hit_consensus_id_set : Set[TigId] = set()
@@ -714,11 +716,11 @@ if __name__ == '__main__':
         hit_consensus_id_set.add(TigId(hsp.query_id.split("_rframe")[0]))
         hit_phmm_id_set.add(TigId(hsp.hit_id))
 
-    print("read graphs")
+    print("read graphs", time.time())
     dags = read_dot(dot_path, hit_consensus_id_set)
-    print("read pHMM DB")
+    print("read pHMM DB", time.time())
     phmms = read_phmmDB(phmmDB_path, hit_phmm_id_set)
-    print("read contigs")
+    print("read contigs", time.time())
     consensuses = read_consensuses(consensuses_path, hit_consensus_id_set)
 
     corrected_seqrecords = []
@@ -726,6 +728,7 @@ if __name__ == '__main__':
     for hsp in hmmscan_domtbl:
         consensus_id    = hsp.query_id.split("_rframe")[0]
         matched_phmm_id = hsp.hit_id
+        print(f"correct contig {consensus_id} with {matched_phmm_id}", time.time())
 
         consensus       = consensuses[consensus_id]
         dag             = dags[consensus_id]
