@@ -681,7 +681,6 @@ parser.add_argument('--hmm', nargs='?')
 args = parser.parse_args()
 
 if __name__ == '__main__':
-    sys.stdout = open('nanovir.log', 'w')
     start = time.time()
     print(f"Start NanoVir correction of {args.prefix}.")
 
@@ -747,4 +746,3 @@ if __name__ == '__main__':
 
     end = time.time()
     print(end - start)
-    sys.stdout.close()
