@@ -677,6 +677,7 @@ parser.add_argument('--outdir', '-o', nargs='?')
 parser.add_argument('--tmpdir', nargs='?', default='tmp')
 parser.add_argument('--domtbl', '-d', nargs='?')
 parser.add_argument('--hmm', nargs='?')
+parser.add_argument('--skip_split_dots', action='store_true', default=False)
 
 args = parser.parse_args()
 
@@ -706,8 +707,9 @@ if __name__ == '__main__':
         hit_consensus_id_set.add(TigId(hsp.query_id.split("_rframe")[0]))
         hit_phmm_id_set.add(TigId(hsp.hit_id))
 
-    print("Split graphs", time.strftime("%H:%M:%S", time.localtime()))
-    split_dot(dot_path, hit_consensus_id_set, tmpdir)
+    if not args.skip_split_dots:
+        print("Split graphs", time.strftime("%H:%M:%S", time.localtime()))
+        split_dot(dot_path, hit_consensus_id_set, tmpdir)
     print("Read pHMM DB", time.strftime("%H:%M:%S", time.localtime()))
     phmms = read_phmmDB(phmmDB_path, hit_phmm_id_set)
 
@@ -716,7 +718,7 @@ if __name__ == '__main__':
         matched_phmm_id = hsp.hit_id
         print(f"Correct the contig {consensus_id} with {matched_phmm_id}", time.strftime("%H:%M:%S", time.localtime()))
 
-        dag             = read_dot(consensus_id)
+        dag             = read_dot(tmpdir, consensus_id)
         
         matched_phmm    = phmms[matched_phmm_id]
 
