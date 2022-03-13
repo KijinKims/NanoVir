@@ -681,7 +681,7 @@ parser.add_argument('--hmm', nargs='?')
 args = parser.parse_args()
 
 if __name__ == '__main__':
-    sys.stdout = open('file', 'w')
+    sys.stdout = open('nanovir.log', 'w')
     start = time.time()
     print(f"Start NanoVir correction of {args.prefix}.")
 
