@@ -566,19 +566,14 @@ class DAG:
         return consensus_path
         
 
-def read_dot(dot_path_ : Path, consensus_ids, minimum_edge_weight : int) -> Dict[TigId, DAG] :
-    """Read the DAGs from given DOT file.
-       store them as list of DAG objects.
-    """
-
-    dags = {}
+def split_dot(dot_path_ : Path, consensus_ids, tmpdir : Path) :
+    """Split the DAGs into DOT files each of which contains only one DAG."""
 
     tig_id = ""
     next_tig_id = ""
     
     a_digraph_in_dot=""
-    tmp_dir = Path("tmp")
-    tmp_dir.mkdir(exist_ok=True)
+    
     with open(dot_path_) as dot:
         for line in dot:
             if line.startswith('digraph'):
@@ -586,19 +581,8 @@ def read_dot(dot_path_ : Path, consensus_ids, minimum_edge_weight : int) -> Dict
                 next_tig_id = line.split()[1]
 
                 if a_digraph_in_dot and tig_id in consensus_ids:
-                    with open(Path(tmp_dir, f"{tig_id}.dot"), "w") as tmp:
+                    with open(Path(tmpdir, f"{tig_id}.dot"), "w") as tmp:
                         tmp.write(a_digraph_in_dot)
-                        dag = DAG(nx.nx_pydot.read_dot(Path(tmp_dir, f"{tig_id}.dot")))
-                        
-                        # initial base attribute is wrapped with double quotes
-                        dag.base_quote_strip()
-
-                        # filter edges with low weight
-                        dag.prun(minimum_edge_weight)
-                        dag.update_ordering()
-                        dag.update_base_dict()
-
-                        dags[tig_id] = dag
                 
                 a_digraph_in_dot = line
                 tig_id = next_tig_id
@@ -608,13 +592,21 @@ def read_dot(dot_path_ : Path, consensus_ids, minimum_edge_weight : int) -> Dict
     
     # last graph
     if tig_id in consensus_ids:
-        with open(Path(tmp_dir, f"{tig_id}.dot"), "w") as tmp:
+        with open(Path(tmpdir, f"{tig_id}.dot"), "w") as tmp:
             tmp.write(a_digraph_in_dot)
-            dags[tig_id] = DAG(nx.nx_pydot.read_dot(Path(tmp_dir, f"{tig_id}.dot")))
+            
 
-    shutil.rmtree(tmp_dir, ignore_errors=True)
-                
-    return dags
+def read_dot(tmpdir : Path, consensus_id) -> DAG :
+    dag = DAG(nx.nx_pydot.read_dot(Path(tmpdir, f"{consensus_id}.dot")))
+    # initial base attribute is wrapped with double quotes
+    dag.base_quote_strip()
+
+    # filter edges with low weight
+    dag.prun(minimum_edge_weight)
+    dag.update_ordering()
+    dag.update_base_dict()
+
+    return dag
 
 def read_phmmDB(phmmDB_path_ : Path, phmm_ids) -> Dict[HMMId, HMM]:
     """Read the profile HMMs.
@@ -684,6 +676,7 @@ parser = argparse.ArgumentParser(prog='NanoVir', description='%(prog)s is a comm
 parser.add_argument('--prefix', '-p', nargs='?')
 parser.add_argument('--graphs', '-g', nargs='?')
 parser.add_argument('--outdir', '-o', nargs='?')
+parser.add_argument('--tmpdir', nargs='?', default='tmp')
 parser.add_argument('--domtbl', '-d', nargs='?')
 parser.add_argument('--hmm', nargs='?')
 
@@ -693,11 +686,13 @@ if __name__ == '__main__':
     start = time.time()
     print(f"Start NanoVir correction of {args.prefix}.")
 
+    hmmscan_domtbl_path : Path = Path(args.domtbl)
     dot_path : Path = Path(args.graphs)
     phmmDB_path : Path = Path(args.hmm)
-    hmmscan_domtbl_path : Path = Path(args.domtbl)
     outdir : Path = Path(args.outdir)
     outdir.mkdir(parents=True, exist_ok=True)
+    tmpdir : Path = Path(args.tmpdir)
+    tmpdir.mkdir(parents=True, exist_ok=True)
     minimum_edge_weight : int = 2
     aggr_mode : bool = False
     only_indel_mode : bool = True
@@ -713,8 +708,8 @@ if __name__ == '__main__':
         hit_consensus_id_set.add(TigId(hsp.query_id.split("_rframe")[0]))
         hit_phmm_id_set.add(TigId(hsp.hit_id))
 
-    print("read graphs", time.time())
-    dags = read_dot(dot_path, hit_consensus_id_set, minimum_edge_weight)
+    print("split graphs", time.time())
+    split_dot(dot_path, hit_consensus_id_set, tmpdir)
     print("read pHMM DB", time.time())
     phmms = read_phmmDB(phmmDB_path, hit_phmm_id_set)
 
@@ -723,7 +718,7 @@ if __name__ == '__main__':
         matched_phmm_id = hsp.hit_id
         print(f"Correct the contig {consensus_id} with {matched_phmm_id}", time.time())
 
-        dag             = dags[consensus_id]
+        dag             = read_dot(consensus_id)
         
         matched_phmm    = phmms[matched_phmm_id]
 
