@@ -566,17 +566,7 @@ class DAG:
         return consensus_path
         
 
-def read_consensuses(consensuses_path_, consensus_ids) -> Dict[TigId, SeqRecord]:
-    """Read the consensuses from fasta.
-       Store them as list of SeqRecord objects in Biopython.
-    """
-    seqrecords = {}
-    for record in SeqIO.parse(consensuses_path_, "fasta"):
-        if record.id in consensus_ids:
-            seqrecords[TigId(record.id)] = record
-    return seqrecords
-
-def read_dot(dot_path_ : Path, consensus_ids) -> Dict[TigId, DAG] :
+def read_dot(dot_path_ : Path, consensus_ids, minimum_edge_weight : int) -> Dict[TigId, DAG] :
     """Read the DAGs from given DOT file.
        store them as list of DAG objects.
     """
@@ -598,7 +588,17 @@ def read_dot(dot_path_ : Path, consensus_ids) -> Dict[TigId, DAG] :
                 if a_digraph_in_dot and tig_id in consensus_ids:
                     with open(Path(tmp_dir, f"{tig_id}.dot"), "w") as tmp:
                         tmp.write(a_digraph_in_dot)
-                        dags[tig_id] = DAG(nx.nx_pydot.read_dot(Path(tmp_dir, f"{tig_id}.dot")))
+                        dag = DAG(nx.nx_pydot.read_dot(Path(tmp_dir, f"{tig_id}.dot")))
+                        
+                        # initial base attribute is wrapped with double quotes
+                        dag.base_quote_strip()
+
+                        # filter edges with low weight
+                        dag.prun(minimum_edge_weight)
+                        dag.update_ordering()
+                        dag.update_base_dict()
+
+                        dags[tig_id] = dag
                 
                 a_digraph_in_dot = line
                 tig_id = next_tig_id
@@ -682,7 +682,6 @@ def make_corrected_consensus_as_seqrecord(corrected_sequence_ : str, consensus_i
 
 parser = argparse.ArgumentParser(prog='NanoVir', description='%(prog)s is a command line program for correcting sequencing errors in Nanopore reads with pHMM DB.')
 parser.add_argument('--prefix', '-p', nargs='?')
-parser.add_argument('--contigs', '-x', nargs='?')
 parser.add_argument('--graphs', '-g', nargs='?')
 parser.add_argument('--outdir', '-o', nargs='?')
 parser.add_argument('--domtbl', '-d', nargs='?')
@@ -692,13 +691,11 @@ args = parser.parse_args()
 
 if __name__ == '__main__':
     start = time.time()
-    print("")
+    print(f"Start NanoVir correction of {args.prefix}.")
 
-    consensuses_path : Path = Path(args.contigs)
     dot_path : Path = Path(args.graphs)
     phmmDB_path : Path = Path(args.hmm)
     hmmscan_domtbl_path : Path = Path(args.domtbl)
-    output_path : Path = Path(f"{args.prefix}.nanovir.corrected.fasta")
     outdir : Path = Path(args.outdir)
     outdir.mkdir(parents=True, exist_ok=True)
     minimum_edge_weight : int = 2
@@ -717,35 +714,22 @@ if __name__ == '__main__':
         hit_phmm_id_set.add(TigId(hsp.hit_id))
 
     print("read graphs", time.time())
-    dags = read_dot(dot_path, hit_consensus_id_set)
+    dags = read_dot(dot_path, hit_consensus_id_set, minimum_edge_weight)
     print("read pHMM DB", time.time())
     phmms = read_phmmDB(phmmDB_path, hit_phmm_id_set)
-    print("read contigs", time.time())
-    consensuses = read_consensuses(consensuses_path, hit_consensus_id_set)
-
-    corrected_seqrecords = []
 
     for hsp in hmmscan_domtbl:
         consensus_id    = hsp.query_id.split("_rframe")[0]
         matched_phmm_id = hsp.hit_id
-        print(f"correct contig {consensus_id} with {matched_phmm_id}", time.time())
+        print(f"Correct the contig {consensus_id} with {matched_phmm_id}", time.time())
 
-        consensus       = consensuses[consensus_id]
         dag             = dags[consensus_id]
         
         matched_phmm    = phmms[matched_phmm_id]
 
-        # initial base attribute is wrapped with double quotes
-        dag.base_quote_strip()
-
         # if hit appeared in reverse direction, dag also reversed
         if hsp.direction == "-":
             dag.reverse_complement()
-            
-        # filter edges with low weight
-        dag.prun(minimum_edge_weight)
-        dag.update_ordering()
-        dag.update_base_dict()
         
         # aggressive mode
         if aggr_mode:
@@ -762,14 +746,10 @@ if __name__ == '__main__':
         if only_indel_mode:
             corrected_path = dag.leave_only_indel_errors(corrected_path)
 
-
         # export results
         dag.export_dot(Path(outdir, f"{consensus_id}_{matched_phmm_id}.dot"), horizontal_=True)
         corrected_sequence = dag.extract_base_with_node_id_list(corrected_path)
-        corrected_seqrecords.append(make_corrected_consensus_as_seqrecord(corrected_sequence, consensus_id, matched_phmm_id))
-
-    
-    SeqIO.write(corrected_seqrecords, Path(outdir, output_path), "fasta")
+        SeqIO.write(make_corrected_consensus_as_seqrecord(corrected_sequence, consensus_id, matched_phmm_id), Path(outdir, f"{consensus_id}_{matched_phmm_id}.fasta"), "fasta")
 
     end = time.time()
     print(end - start)
