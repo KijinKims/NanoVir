@@ -3,7 +3,7 @@ nextflow.enable.dsl=2
 workflow {
     main:
     Channel.fromPath(params.input).set { contigs }
-    Channel.fromPath(params.graph).set { graphs }
+    Channel.fromPath(params.graphs).set { graphs }
     Channel.fromPath(params.hmmdb).set { hmmdb }
     //Canu(fastq)
     Translate(contigs)
