@@ -2,14 +2,15 @@ nextflow.enable.dsl=2
 
 workflow {
     main:
-    Channel.fromPath(params.input).set { fastq }
+    Channel.fromPath(params.input).set { contigs }
+    Channel.fromPath(params.graph).set { graphs }
     Channel.fromPath(params.hmmdb).set { hmmdb }
-    Canu(fastq)
-    Translate(Canu.out.contigs)
+    //Canu(fastq)
+    Translate(contigs)
     HMMscan(Translate.out.translated_contigs, hmmdb)
-    Correct(Canu.out.contigs, Canu.out.graph, hmmdb, HMMscan.out.domtbl)
-    Virsorter2(Correct.out.corrected_contigs)
-    CheckV(Virsorter2.out.viral_contigs)
+    Correct(graphs, hmmdb, HMMscan.out.domtbl)
+    //Virsorter2(Correct.out.corrected_contigs)
+    //CheckV(Virsorter2.out.viral_contigs)
 }
 
 process Canu {
@@ -55,15 +56,13 @@ process Correct {
     publishDir "${params.outdir}", mode: 'copy'
 
     input:
-        path contigs
         path graphs
         path hmmdb
         path hmmscan_result    
     output:
-        path "correct.${params.prefix}/${params.prefix}.corrected_contigs.fasta", emit: corrected_contigs
-        path "correct.${params.prefix}/${params.prefix}.corrected_graphs.dot", emit: corrected_graphs
+        path "nanovir_out/*"
     """
-    python ${params.nanovir_dir}/modules/correct.py --contigs $contigs --DAG $graphs --hmmdb $hmmdb --hmmscan_result $hmmscan_result --minimum_edge_weight ${params.min_weight} -o correct.${params.prefix}/${params.prefix}.corrected_contigs.fasta -og correct.${params.prefix}/${params.prefix}.corrected_graphs.dot
+    python ${params.nanovir_dir}/modules/correct.py --DAG $graphs --hmmdb $hmmdb --hmmscan_result $hmmscan_result --minimum_edge_weight ${params.min_weight} --outdir nanovir_out
     """
 }
 
