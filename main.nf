@@ -57,7 +57,7 @@ process Correct {
 
     input:
         path graphs
-        path hmmdb
+        path hmm_dir
         path hmmscan_result    
     output:
         path "nanovir_out/*"
