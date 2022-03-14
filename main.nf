@@ -62,7 +62,7 @@ process Correct {
     output:
         path "nanovir_out/*"
     """
-    python ${params.nanovir_dir}/modules/correct.py --DAG $graphs --hmmdb $hmmdb --hmmscan_result $hmmscan_result --minimum_edge_weight ${params.min_weight} --outdir nanovir_out
+    python ${params.nanovir_dir}/modules/correct.py --graphs $graphs --hmm $hmmdb --domtbl $hmmscan_result --minimum_edge_weight ${params.min_weight} --outdir nanovir_out
     """
 }
 

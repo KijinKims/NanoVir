@@ -672,6 +672,7 @@ parser.add_argument('--outdir', '-o', nargs='?')
 parser.add_argument('--tmpdir', nargs='?', default='tmp')
 parser.add_argument('--domtbl', '-d', nargs='?')
 parser.add_argument('--hmm', nargs='?')
+parser.add_argument('--minimum_edge_weight', type=int)
 parser.add_argument('--skip_split_dots', action='store_true', default=False)
 
 args = parser.parse_args()
@@ -687,7 +688,7 @@ if __name__ == '__main__':
     outdir.mkdir(parents=True, exist_ok=True)
     tmpdir : Path = Path(args.tmpdir)
     tmpdir.mkdir(parents=True, exist_ok=True)
-    minimum_edge_weight : int = 2
+    minimum_edge_weight : int = args.minimum_edge_weight
     aggr_mode : bool = False
     only_indel_mode : bool = True
 
