@@ -8,7 +8,7 @@ workflow {
     //Canu(fastq)
     Translate(contigs)
     HMMscan(Translate.out.translated_contigs, hmm_dir)
-    Correct(graphs, hmmdb, HMMscan.out.domtbl)
+    Correct(graphs, hmm_dir, HMMscan.out.domtbl)
     //Virsorter2(Correct.out.corrected_contigs)
     //CheckV(Virsorter2.out.viral_contigs)
 }
@@ -62,7 +62,7 @@ process Correct {
     output:
         path "nanovir_out/*"
     """
-    python ${params.nanovir_dir}/modules/correct.py --graphs $graphs --hmm $hmmdb --domtbl $hmmscan_result --minimum_edge_weight ${params.min_weight} --outdir nanovir_out
+    python ${params.nanovir_dir}/modules/correct.py --graphs $graphs --hmm $hmm_dir/${params.hmm} --domtbl $hmmscan_result --minimum_edge_weight ${params.min_weight} --outdir nanovir_out
     """
 }
 
