@@ -599,11 +599,6 @@ def read_dot(tmpdir : Path, consensus_id) -> DAG :
     # initial base attribute is wrapped with double quotes
     dag.base_quote_strip()
 
-    # filter edges with low weight
-    dag.prun(minimum_edge_weight)
-    dag.update_ordering()
-    dag.update_base_dict()
-
     return dag
 
 def read_phmmDB(phmmDB_path_ : Path, phmm_ids) -> Dict[HMMId, HMM]:
@@ -725,6 +720,11 @@ if __name__ == '__main__':
         # if hit appeared in reverse direction, dag also reversed
         if hsp.direction == "-":
             dag.reverse_complement()
+
+        # filter edges with low weight
+        dag.prun(minimum_edge_weight)
+        dag.update_ordering()
+        dag.update_base_dict()
         
         # aggressive mode
         if aggr_mode:
