@@ -4,10 +4,10 @@ workflow {
     main:
     Channel.fromPath(params.input).set { contigs }
     Channel.fromPath(params.graphs).set { graphs }
-    Channel.fromPath(params.hmmdb).set { hmmdb }
+    Channel.fromPath(params.hmm_dir, type: 'dir').set { hmm_dir }
     //Canu(fastq)
     Translate(contigs)
-    HMMscan(Translate.out.translated_contigs, hmmdb)
+    HMMscan(Translate.out.translated_contigs, hmm_dir)
     Correct(graphs, hmmdb, HMMscan.out.domtbl)
     //Virsorter2(Correct.out.corrected_contigs)
     //CheckV(Virsorter2.out.viral_contigs)
@@ -43,12 +43,12 @@ process HMMscan {
 
     input:
         path translated_contigs
-        path hmmdb
+        path hmm_dir
     output:
         path "hmmscan.${params.prefix}/${params.prefix}.domtbl", emit: domtbl
     """
     mkdir hmmscan.${params.prefix}
-    hmmscan --domtblout hmmscan.${params.prefix}/${params.prefix}.domtbl -E ${params.hmmscan_evalue} $hmmdb $translated_contigs 
+    hmmscan --domtblout hmmscan.${params.prefix}/${params.prefix}.domtbl -E ${params.hmmscan_evalue} ${hmm_dir}/${params.hmm} $translated_contigs 
     """
 }
 
