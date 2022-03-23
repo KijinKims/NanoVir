@@ -3,6 +3,7 @@ try:
     import networkx as nx
     from hmm_profile import reader
     from hmm_profile.models import HMM
+    import time
 except ImportError:
     print('[Error] Seems you do not have the required python packages. Please check it.')
 
@@ -55,6 +56,7 @@ class PHMM:
         """Return the path corrected with viterbi algorithm.
            Generate data objects to store predecessors, ancestors and base of each node where every node id is converted into index in ordering for numpy operation.    
         """
+        
         predecessors : List[List[Idx]] = [[]] * len(dag_)
         for i in range(len(dag_)):
             predecessors[i] = [ dag_.node_id_to_index(predecessor_id) for predecessor_id in dag_.predecessors(dag_.index_to_node_id(i)) ]
@@ -73,6 +75,7 @@ class PHMM:
         for i in range(len(dag_)):
             bases[i] = Base(dag_.base(dag_.index_to_node_id(i)))
 
+        print("Viterbi algorithm starts", time.strftime("%H:%M:%S", time.localtime()))
         tr, max_tr_idx = self._modified_viterbi(
             predecessors,
             ancestors,
@@ -85,8 +88,11 @@ class PHMM:
             len(dag_),
             len(self)
         )
+        print("Viterbi algorithm done", time.strftime("%H:%M:%S", time.localtime()))
 
+        print("Viterbi traceback starts", time.strftime("%H:%M:%S", time.localtime()))
         corrected_path : List[NodeId] = [ dag_.index_to_node_id(x) for x in self.traceback(tr, max_tr_idx) ]
+        print("Viterbi traceback done", time.strftime("%H:%M:%S", time.localtime()))
 
         return corrected_path
 

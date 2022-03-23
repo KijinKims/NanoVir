@@ -1,6 +1,6 @@
 from typing import DefaultDict, List, Dict, Set, Tuple
 from typing import NewType
-from collections import defaultdict
+from collections import defaultdict, deque
 from pathlib import Path
 import copy
 from Bio import SeqIO
@@ -601,6 +601,36 @@ def read_dot(tmpdir : Path, consensus_id) -> DAG :
 
     return dag
 
+def scan_hmm(phmmDB_path_ : Path, phmm_id, tmpdir : Path) :
+    """Scan Phmm in DB and retrieve it."""
+    prev_line = deque(maxlen=1)
+    write_on = False
+    
+    with open(Path(tmpdir, f"{phmm_id}.hmm"), "w") as tmp:
+        with open(phmmDB_path_) as file:
+            for line in file:
+                
+                if line.startswith(f'HMMER3'):
+                    if write_on:
+                        break
+
+                if write_on:
+                    tmp.write(line)
+                
+                if line.startswith(f'NAME  {phmm_id}'):
+                    tmp.write(prev_line.pop())
+                    prev_line.clear()
+                    tmp.write(line)
+                    write_on = True
+                
+                prev_line.append(line)
+
+    with open(Path(tmpdir, f"{phmm_id}.hmm"), "r") as tmp:
+        model = reader.read_single(tmp)
+
+    return model
+
+
 def read_phmmDB(phmmDB_path_ : Path, phmm_ids) -> Dict[HMMId, HMM]:
     """Read the profile HMMs.
        Store them as dictionary of HMM objects in profileHMM module with each HMM's id as a key.
@@ -697,35 +727,39 @@ if __name__ == '__main__':
     hmmscan_domtbl = parse_hmmscanresult(hmmscan_domtbl_path)
 
     hit_consensus_id_set : Set[TigId] = set()
-    hit_phmm_id_set : Set[TigId] = set()
 
     for hsp in hmmscan_domtbl:
         hit_consensus_id_set.add(TigId(hsp.query_id.split("_rframe")[0]))
-        hit_phmm_id_set.add(TigId(hsp.hit_id))
 
     if not args.skip_split_dots:
         print("Split graphs", time.strftime("%H:%M:%S", time.localtime()))
         split_dot(dot_path, hit_consensus_id_set, tmpdir)
-    print("Read pHMM DB", time.strftime("%H:%M:%S", time.localtime()))
-    phmms = read_phmmDB(phmmDB_path, hit_phmm_id_set)
 
     for hsp in hmmscan_domtbl:
         consensus_id    = hsp.query_id.split("_rframe")[0]
         matched_phmm_id = hsp.hit_id
         print(f"Correct the contig {consensus_id} with {matched_phmm_id}", time.strftime("%H:%M:%S", time.localtime()))
 
-        dag             = read_dot(tmpdir, consensus_id)
-        
-        matched_phmm    = phmms[matched_phmm_id]
+        print(f"Read pHMM {matched_phmm_id} start", time.strftime("%H:%M:%S", time.localtime()))
+        matched_phmm = scan_hmm(phmmDB_path, matched_phmm_id, tmpdir)
+        print(f"Read pHMM {matched_phmm_id} done", time.strftime("%H:%M:%S", time.localtime()))
 
+        print(f"Read the graph of the contig {consensus_id} start", time.strftime("%H:%M:%S", time.localtime()))
+        dag             = read_dot(tmpdir, consensus_id)
+        print(f"Read the graph of the contig {consensus_id} done", time.strftime("%H:%M:%S", time.localtime()))
+
+        print(f"Reverse complement the graph of the contig {consensus_id} start", time.strftime("%H:%M:%S", time.localtime()))
         # if hit appeared in reverse direction, dag also reversed
         if hsp.direction == "-":
             dag.reverse_complement()
+        print(f"Reverse complement the graph of the contig {consensus_id} done", time.strftime("%H:%M:%S", time.localtime()))
 
+        print(f"Edge pruning of the graph {consensus_id} start", time.strftime("%H:%M:%S", time.localtime()))
         # filter edges with low weight
         dag.prun(minimum_edge_weight)
         dag.update_ordering()
         dag.update_base_dict()
+        print(f"Edge pruning of the graph {consensus_id} done", time.strftime("%H:%M:%S", time.localtime()))
         
         # aggressive mode
         if aggr_mode:
