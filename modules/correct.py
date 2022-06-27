@@ -576,7 +576,7 @@ def split_dot(dot_path_ : Path, consensus_ids, tmpdir : Path) :
         for line in dot:
             if line.startswith('strict digraph'):
 
-                next_tig_id = line.split()[1]
+                next_tig_id = line.split()[2]
 
                 if a_digraph_in_dot and tig_id in consensus_ids:
                     with open(Path(tmpdir, f"{tig_id}.dot"), "w") as tmp:
